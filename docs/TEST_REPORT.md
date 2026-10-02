@@ -2,7 +2,7 @@
 
 2026-10-02；本机 WSL → solvinglab，远端 tmux `data`。
 
-## 功能验证
+## v0.1.0 初始功能验证
 
 - 14 项单元测试通过，覆盖任务路径、UTF-8 游标、请求去重与冲突、退出码、超时、取消、产物清单和未知提交响应。
 - 14 项真实服务器验收通过，以下为实际记录：
@@ -69,3 +69,6 @@ Linux x86_64 / WSL、glibc 2.35，构建 Python 3.10。将 PATH 设为 `/nonexis
 ## v0.2.0 网络压力与性能
 
 26 项单元测试、原有 14 项真实验收和 8 工具 MCP（包括批量状态）通过。最终 11 个网络压力场景通过；96 任务 / 32 路并发全部成功。具体数字、故障注入方式、未通过的初次调优和性能局限见 [网络压力与性能报告](PERFORMANCE.md)。
+
+
+v0.2.0 [GitHub Actions 发布构建](https://github.com/Vinnish-A/ssh4codex/actions/runs/36972815000) 成功。从 GitHub 正式包完成 SHA256 升级，实际版本 0.2.0；安装包在无外部 Python/SSH PATH 下通过 CLI/MCP 8 工具验证，并完成 Solvinglab doctor。本地独立包还通过 tidy R ggplot2/qs、MCP 批量状态和流式产物下载。初始章节记录 v0.1.0 的耗时，最新 14 项实测数据位于 benchmarks/live_acceptance.json。

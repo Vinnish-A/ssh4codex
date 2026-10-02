@@ -37,6 +37,13 @@ async def remote_status(server: str, task_id: str, stdout_cursor: int = 0,
 
 
 @mcp.tool()
+async def remote_status_many(server: str, task_ids: list[str], logs: bool = False,
+                             limit: int = 2048) -> dict[str, Any]:
+    """Read 1..64 tasks in one SSH request. No logs by default; optional bounded tails."""
+    return await invoke(server, 'status_many', task_ids, logs, limit)
+
+
+@mcp.tool()
 async def remote_wait(server: str, task_id: str, seconds: float = 10) -> dict[str, Any]:
     """Wait at most 60 seconds. A running result is not a failure; the task stays in tmux."""
     return await invoke(server, 'wait', task_id, seconds)

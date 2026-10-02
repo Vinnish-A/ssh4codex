@@ -82,7 +82,7 @@ ssh4codex fetch solvinglab TASK_ID --to ./downloads
 
 put 默认远端文件权限 600，CLI 可 `--mode 644`；流式写临时文件，验证 SHA256 后原子替换。输入原文不返回给模型。覆盖目标是显式副作用，按任务授权选择目的路径。
 
-fetch 只取该任务声明的 artifacts，并要求任务 succeeded。未完成、缺失、重复 basename 或完成后被修改的产物都拒绝；校验通过后逐文件原子交付，不承诺多文件整体事务。图像下载后由 agent 使用图片查看工具核验视觉效果；连接器不评价科研图形结论。
+fetch 用一次 SSH 流取回完成时 manifest 和全部文件，并要求任务 succeeded。未完成、缺失、重复 basename 或完成后被修改的产物都拒绝；全部文件及传输退出码校验通过后逐文件原子交付，不承诺多文件整体事务。图像下载后由 agent 使用图片查看工具核验视觉效果；连接器不评价科研图形结论。
 
 ## 六、MCP 配置与工具映射
 
@@ -96,6 +96,7 @@ command = "/home/YOUR_USER/.local/bin/ssh4codex-mcp"
 | 工具 | 用途 |
 |---|---|
 | remote_run | 提交 script、cwd、interpreter、env、artifacts、timeout、task_id；短等待 |
+| remote_status_many | 一次查询 1..64 个任务，默认不带日志 |
 | remote_status | 状态与 stdout/stderr 字节游标增量 |
 | remote_wait | 单次有上限等待；保持后台任务 |
 | remote_cancel | 取消一个任务 |
@@ -110,3 +111,20 @@ command = "/home/YOUR_USER/.local/bin/ssh4codex-mcp"
 新服务器先核实用户名、端口、known_hosts、密钥授权，再测试全新连接而非复用旧密码 master，最后更新 `ssh4codex/catalog.json` 和 `docs/SERVERS.md`。记录公钥指纹、验证日期、私钥是否按用户授权复制以及复制位置；不要记录私钥内容、密码、令牌或未经授权的私网拓扑。
 
 公开提交：软件源码、示例、公开使用文档、服务器部署元数据、可复核测试/测量。保持 `.local/`、AGENTS.md、用户配置、真实任务日志、下载图片、虚拟环境、私钥及 token 不入 Git；预编译运行时仅作为 Release asset，不提交到 main。更改文档不得把旧科研结果写入连接器的长期上下文。
+
+## 八、网络波动与多任务性能
+
+查询多个任务优先批量读取，避免每个任务都重复网络往返：
+
+```bash
+ssh4codex status-many solvinglab TASK_A TASK_B TASK_C
+# 确实需要末尾日志时再追加 --logs
+```
+
+status、status-many、wait、list、doctor 在网络失败后最多重试一次，使用新连接绕过无响应的旧 master；不关闭其它连接。fetch 也只在传输故障时重试一次，全流核验前保留已有目标文件。认证/主机指纹/校验错误不会自动重试。任务提交、取消和上传没有自动重放；上传响应丢失返回 transfer_unknown，应核验目标文件后再决定是否重试。
+
+默认启用 SSH 压缩，尤其适合脚本、日志和文本矩阵。PNG、qs、gzip 等数据通常收益较小；不能突破实际链路带宽。配置 `compression=false` 或 add 的 `--no-compression` 可关闭。修改后使用 disconnect 关闭本工具的 master，再建立连接；远端 tmux 任务继续。
+
+可通过 add 设置 `--connect-timeout`（默认 8 秒）、`--rpc-timeout`（默认 10 秒）、`--transfer-timeout`（默认 300 秒）。RPC 等待请求会在 rpc_timeout 基础上加 wait 秒数；新连接重试还允许 connect_timeout 的握手预算。最多两次尝试，不是无限重连。测试用 rpc_timeout=3、connect_timeout=8；不要把较慢网络的握手时间压到 3 秒。
+
+详见 [网络压力与性能报告](PERFORMANCE.md)。当前传输重试从头开始，没有断点续传；超过两次失败时保留明确错误和恢复 ID，由 agent 决定下一步。

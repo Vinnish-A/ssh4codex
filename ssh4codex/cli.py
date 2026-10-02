@@ -17,8 +17,14 @@ def parser():
     add.add_argument('--cwd', default='.')
     add.add_argument('--session', default='ssh4codex')
     add.add_argument('--identity-file'); add.add_argument('--control-path'); add.add_argument('--ssh-config')
+    add.add_argument('--connect-timeout', type=int); add.add_argument('--rpc-timeout', type=float)
+    add.add_argument('--transfer-timeout', type=float)
+    add.add_argument('--compression', action=argparse.BooleanOptionalAction, default=None)
     for action in ['doctor', 'list', 'disconnect']:
         a = sub.add_parser(action); a.add_argument('server')
+    batch = sub.add_parser('status-many', help='Read 1..64 tasks in one SSH request; omit logs by default')
+    batch.add_argument('server'); batch.add_argument('task_ids', nargs='+')
+    batch.add_argument('--logs', action='store_true'); batch.add_argument('--limit', type=int, default=2048)
     run = sub.add_parser('run', help='Submit and briefly wait; running tasks continue remotely')
     run.add_argument('server')
     script = run.add_mutually_exclusive_group(required=True)
@@ -69,6 +75,8 @@ def main(argv=None):
                 value = c.submit(script, args.cwd, env, [args.interpreter], args.artifact, args.timeout, args.task_id, args.wait, args.limit)
             elif args.action == 'status':
                 value = c.status(args.task_id, args.stdout_cursor, args.stderr_cursor, args.limit, args.tail)
+            elif args.action == 'status-many':
+                value = c.status_many(args.task_ids, args.logs, args.limit)
             elif args.action == 'wait': value = c.wait(args.task_id, args.seconds, args.limit)
             elif args.action == 'cancel': value = c.cancel(args.task_id)
             elif args.action == 'fetch': value = c.fetch(args.task_id, args.to)

@@ -1,0 +1,7 @@
+{
+  "requests": 96,
+  "concurrency": 32,
+  "elapsed_s": 11.313,
+  "succeeded": 96,
+  "errors": []
+}

@@ -8,6 +8,8 @@
 
 worker 使用独立子进程组、单独 stdout/stderr、运行超时和取消轮询；进程退出后计算显式产物 SHA256，再原子发布终态。因此 fetch 不以文件是否已出现来推断程序结束。
 
-不保证跨服务器磁盘丢失/人工删除任务记录的 exactly-once，不自动重试状态不明的副作用操作。原子发布针对单文件；多文件 fetch 会逐一核验交付。日志 cursor 是字节偏移，不是行号；UTF-8 增量返回避免截断字符，尾部读取可能以替代字符开头，skipped 告知省略数量。
+不保证跨服务器磁盘丢失/人工删除任务记录的 exactly-once，不自动重试状态不明的副作用操作。原子发布针对单文件；多文件 fetch 以一次 SSH 的 tar 流携带完成时 manifest 和编号内容，边读边 SHA256 核验；全流和退出码通过后再逐文件原子交付，不解压远端文件路径。日志 cursor 是字节偏移，不是行号；UTF-8 增量返回避免截断字符，尾部读取可能以替代字符开头，skipped 告知省略数量。
 
 本地故障分类：configuration、authentication、host_key、transport、transport_timeout、submission_unknown、protocol、setup、remote、artifact_not_ready、artifact_missing、artifact_changed、artifact_collision、transfer、transfer_unknown。错误也返回 task_id（如果已知）。正常运行不打印凭据，保留 OpenSSH 的主机密钥检查。
+
+只读 RPC 和下载在网络故障后最多重试一次，并绕过失效 master；提交和上传不自动重放。无完整提交 JSON 时保留 submission_unknown/task_id。本地任务归属使用锁与原子记录，防止跨进程重试读取半份 JSON。status_many 复用一次 tmux pane 扫描；默认不返回日志。SSH 压缩默认开启，可按服务器关闭。

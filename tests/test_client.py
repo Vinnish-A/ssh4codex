@@ -29,10 +29,69 @@ def test_auth_failure_not_retried_as_command(client, monkeypatch):
     assert result.value.kind == 'authentication'
 
 
-def test_fetch_running_blocked(client, monkeypatch, tmp_path):
-    monkeypatch.setattr(client, 'status', lambda *a, **k: {'state': 'running'})
-    with pytest.raises(SSHError) as result: client.fetch('x', tmp_path / 'out')
-    assert result.value.kind == 'artifact_not_ready'
+def test_read_transport_retry_bypasses_master(client, monkeypatch):
+    client.agent_marker.touch()
+    calls = []
+    def call(*args, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1: raise SSHError('transport_timeout', 'blackhole')
+        return subprocess.CompletedProcess(args, 0, b'{"state":"succeeded"}', b'')
+    monkeypatch.setattr(client, 'call_ssh', call)
+    assert client.rpc('status', task_id='x')['state'] == 'succeeded'
+    assert len(calls) == 2 and calls[1]['fresh']
+    argv = client.ssh_argv('command', fresh=True)
+    assert argv.index('ControlPath=none') < argv.index('ControlPath=' + client.socket)
+
+
+def test_submission_is_not_automatically_replayed(client, monkeypatch):
+    client.agent_marker.touch()
+    calls = []
+    def fail(*a, **k):
+        calls.append(k)
+        raise SSHError('submission_unknown', 'lost response', 'stable')
+    monkeypatch.setattr(client, 'call_ssh', fail)
+    with pytest.raises(SSHError): client.submit('printf once', task_id='stable')
+    assert len(calls) == 1
+
+
+def test_truncated_submission_keeps_recovery_id(client, monkeypatch):
+    client.agent_marker.touch()
+    monkeypatch.setattr(client, 'call_ssh', lambda *a, **k: subprocess.CompletedProcess(a, 0, b'{"task_id":', b''))
+    with pytest.raises(SSHError) as exc: client.submit('printf once', task_id='stable')
+    assert exc.value.kind == 'submission_unknown' and exc.value.task_id == 'stable'
+
+
+def test_read_retry_is_bounded(client, monkeypatch):
+    client.agent_marker.touch()
+    calls=[]
+    def fail(*a, **k):
+        calls.append(k)
+        raise SSHError('transport_timeout', 'still unavailable')
+    monkeypatch.setattr(client,'call_ssh',fail)
+    with pytest.raises(SSHError): client.rpc('status',task_id='x')
+    assert len(calls)==2 and calls[1]['fresh']
+
+
+def test_partial_read_reply_with_zero_exit_retries(client, monkeypatch):
+    client.agent_marker.touch()
+    calls=[]
+    def read(*a,**k):
+        calls.append(k)
+        return subprocess.CompletedProcess(a,0,b'{"state":' if len(calls)==1 else b'{"state":"succeeded"}',b'')
+    monkeypatch.setattr(client,'call_ssh',read)
+    assert client.rpc('status',task_id='x')['state']=='succeeded'
+    assert len(calls)==2 and calls[1]['fresh']
+
+
+def test_upload_lost_response_is_not_replayed(client, monkeypatch, tmp_path):
+    source=tmp_path/'upload';source.write_bytes(b'data')
+    calls=[]
+    def interrupted(*a, **k):
+        calls.append(k)
+        return subprocess.CompletedProcess(a,255,b'',b'Connection reset by peer')
+    monkeypatch.setattr(subprocess,'run',interrupted)
+    with pytest.raises(SSHError) as exc:client.put(source,'/remote/upload')
+    assert exc.value.kind=='transfer_unknown' and len(calls)==1
 
 
 def test_config_not_shell_expanded(client):

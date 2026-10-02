@@ -13,7 +13,7 @@ async def main():
         async with ClientSession(read,write) as session:
             await session.initialize()
             tools=await session.list_tools()
-            assert len(tools.tools)==7
+            assert len(tools.tools)==8
             response=await session.call_tool('remote_run',{'server':'solvinglab','script':"printf 'MCP roundtrip OK\\n'",'wait_seconds':3})
             data=response.structuredContent
             # FastMCP may wrap primitive returns; dict tool returns should remain structured.
@@ -21,8 +21,11 @@ async def main():
             assert data['stdout']['text']=='MCP roundtrip OK\n'
             listed=await session.call_tool('remote_tasks',{'server':'solvinglab'})
             assert listed.structuredContent['tasks']
+            batch=await session.call_tool('remote_status_many',{'server':'solvinglab','task_ids':[data['task_id']]})
+            assert batch.structuredContent['tasks'][0]['state']=='succeeded'
+            assert 'stdout' not in batch.structuredContent['tasks'][0]
             report={'passed':True,'transport':'stdio','tools':[t.name for t in tools.tools],
-                    'remote_run_state':data['state'],'remote_task_discovery':True}
+                    'remote_run_state':data['state'],'remote_task_discovery':True,'batch_status':True}
             (root/'benchmarks/mcp_acceptance.json').write_text(json.dumps(report,indent=2))
             print(json.dumps(report))
 

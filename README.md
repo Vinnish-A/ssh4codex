@@ -39,6 +39,7 @@ ssh4codex run lab --script analysis.R \
   --interpreter /opt/conda/envs/tidy/bin/Rscript \
   --artifact result/table.tsv --artifact result/figure.png --wait 2
 ssh4codex wait lab TASK_ID --seconds 10
+ssh4codex status-many lab TASK_ID1 TASK_ID2 TASK_ID3
 ssh4codex status lab TASK_ID --stdout-cursor 2048 --stderr-cursor 0
 ssh4codex fetch lab TASK_ID --to ./downloads
 ssh4codex cancel lab TASK_ID
@@ -61,15 +62,15 @@ MCP 配置示例（将路径中的 YOUR_USER 替换为实际用户）：
 command = "/home/YOUR_USER/.local/bin/ssh4codex-mcp"
 ```
 
-提供 7 个工具：remote_run、remote_status、remote_wait、remote_cancel、remote_fetch、remote_tasks、remote_put。CLI 与 MCP 共用任务引擎。
+提供 8 个工具：remote_run、remote_status、remote_status_many、remote_wait、remote_cancel、remote_fetch、remote_tasks、remote_put。CLI 与 MCP 共用任务引擎。
 
 本地配置 `~/.config/ssh4codex/config.json`；本地恢复记录 `~/.local/state/ssh4codex/`；远端任务日志 `~/.local/share/ssh4codex/tasks/`。支持 `SSH4CODEX_CONFIG`、`SSH4CODEX_STATE` 覆盖。真实配置、私钥、上传内容和研究数据均不随仓库发布。
 
 ## 实测与开发
 
-14 项单元测试、14 项 Solvinglab 实际验收以及官方 SDK stdio MCP 调用通过，覆盖并发幂等、退出码、UTF-8 日志、断线恢复、超时/取消、二进制文件往返、R ggplot2/qs 产物。独立 Release 另外验证无 Python / SSH PATH 下的 CLI、内置 SSH 和 MCP，以及真实服务器任务。
+26 项单元测试、14 项 Solvinglab 实际验收以及官方 SDK stdio MCP 调用通过，覆盖并发幂等、退出码、UTF-8 日志、断线恢复、超时/取消、二进制文件往返、R ggplot2/qs 产物。独立 Release 另外验证无 Python / SSH PATH 下的 CLI、内置 SSH 和 MCP，以及真实服务器任务。
 
-一次五次采样的持久短任务中位数为 0.359 秒，裸 SSH 冷连接 1.888 秒，裸 SSH 复用连接 0.465 秒。一次生成日志的三个观察返回值，o200k_base 估算由 3330 降至 593 token，减少 82.2%。这是特定返回内容的测量，不是完整会话开销或性能保证；MCP 封装和工具 schema 未计入。[测试报告](docs/TEST_REPORT.md)
+一次五次采样的持久短任务中位数为 0.359 秒，裸 SSH 冷连接 1.888 秒，裸 SSH 复用连接 0.465 秒。一次生成日志的三个观察返回值，o200k_base 估算由 3330 降至 593 token，减少 82.2%。这是特定返回内容的测量，不是完整会话开销或性能保证；MCP 封装和工具 schema 未计入。[测试报告](docs/TEST_REPORT.md) · [网络压力与性能报告](docs/PERFORMANCE.md)
 
 本版支持非交互任务，没有自动控制远端 Codex/REPL、管理员 sudo、断点续传或服务器重启后自动重跑。远端 tmux 被结束时报告 interrupted，不自动重放任务。
 

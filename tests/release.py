@@ -34,7 +34,7 @@ async def check(package):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 tools = await session.list_tools()
-                assert len(tools.tools) == 7
+                assert len(tools.tools) == 8
                 response = await session.call_tool('remote_tasks', {'server': 'missing-smoke-server'})
                 assert response.structuredContent['error'] == 'configuration'
         print(json.dumps({'standalone': True, 'cli': True, 'bundled_ssh': True,

@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "bytes": 2097152,
+  "entropy": "os.urandom; incompressible",
+  "dropped_after_local_bytes": 1048576,
+  "recovered_sha256": true,
+  "elapsed_s": 3.742,
+  "no_partial_files": true
+}

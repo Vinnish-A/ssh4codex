@@ -1,0 +1,81 @@
+{
+  "run_id": "b8235ca915a8",
+  "jobs": 48,
+  "concurrency": 8,
+  "fault_scope": "isolated loopback TCP bridge; no tc/iptables or shared SSH disruption",
+  "phases": {
+    "latency_profiles": {
+      "passed": true,
+      "elapsed_s": 26.441,
+      "clean": {
+        "n": 8,
+        "p50_s": 0.4727,
+        "p95_s": 1.6934,
+        "max_s": 1.6934
+      },
+      "delay": {
+        "n": 8,
+        "p50_s": 1.2048,
+        "p95_s": 2.1427,
+        "max_s": 2.1427
+      },
+      "jitter": {
+        "n": 8,
+        "p50_s": 1.3251,
+        "p95_s": 2.1681,
+        "max_s": 2.1681
+      }
+    },
+    "concurrent_unique_tasks": {
+      "passed": true,
+      "elapsed_s": 3.83,
+      "latency": {
+        "n": 48,
+        "p50_s": 0.5672,
+        "p95_s": 0.9777,
+        "max_s": 0.9907
+      },
+      "errors": [],
+      "throughput_jobs_s": 12.532
+    },
+    "concurrent_same_task_id": {
+      "passed": true,
+      "elapsed_s": 2.255,
+      "requests": 24,
+      "execution_count": 1
+    },
+    "idle_connection_drop_recovery": {
+      "passed": true,
+      "elapsed_s": 12.177,
+      "disconnect_recoveries": 5
+    },
+    "drop_after_remote_submission": {
+      "passed": false,
+      "elapsed_s": 3.631,
+      "error": "SSHError",
+      "message": "Connection timed out during banner exchange\r\nConnection to 127.0.0.1 port 46205 timed out"
+    },
+    "drop_during_read": {
+      "passed": true,
+      "elapsed_s": 12.28,
+      "read_recovered": true
+    },
+    "blackout_then_restore": {
+      "passed": true,
+      "elapsed_s": 8.332,
+      "bounded_failure_s": 6.037,
+      "recovered_after_blackout": true
+    },
+    "many_small_artifacts_delayed": {
+      "passed": true,
+      "elapsed_s": 1.018,
+      "files": 24
+    },
+    "8MiB_roundtrip_jitter": {
+      "passed": true,
+      "elapsed_s": 4.274,
+      "bytes": 8388608
+    }
+  },
+  "all_passed": false
+}

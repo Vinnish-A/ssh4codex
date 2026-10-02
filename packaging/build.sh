@@ -55,7 +55,13 @@ cp LICENSE "$package_dir/LICENSE"
 cp packaging/THIRD_PARTY.md "$package_dir/THIRD_PARTY.md"
 cp README.md "$package_dir/README.md"
 mkdir "$package_dir/docs"
-cp docs/AGENT_GUIDE.md docs/SERVERS.md "$package_dir/docs/"
+cp docs/*.md "$package_dir/docs/"
+mkdir "$package_dir/benchmarks"
+for report in live_acceptance mcp_acceptance measurement stress_before stress_intermediate stress_after_final pressure32 stream_intermediate stream_drop rpc_stream_drop; do
+  if [[ -f "benchmarks/$report.json" ]]; then
+    cp "benchmarks/$report.json" "$package_dir/benchmarks/"
+  fi
+done
 version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml | head -1)"
 printf '%s\n' "$version" > "$package_dir/VERSION"
 asset="ssh4codex-linux-$(uname -m).tar.gz"

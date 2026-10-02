@@ -1,0 +1,96 @@
+{
+  "run_id": "23931bf07df9",
+  "jobs": 48,
+  "concurrency": 8,
+  "fault_scope": "isolated loopback TCP bridge; no tc/iptables or shared SSH disruption",
+  "phases": {
+    "latency_profiles": {
+      "passed": true,
+      "elapsed_s": 24.135,
+      "clean": {
+        "n": 8,
+        "p50_s": 0.4897,
+        "p95_s": 0.8824,
+        "max_s": 0.8824
+      },
+      "delay": {
+        "n": 8,
+        "p50_s": 1.2862,
+        "p95_s": 1.7783,
+        "max_s": 1.7783
+      },
+      "jitter": {
+        "n": 8,
+        "p50_s": 1.1351,
+        "p95_s": 1.4859,
+        "max_s": 1.4859
+      }
+    },
+    "concurrent_unique_tasks": {
+      "passed": true,
+      "elapsed_s": 3.608,
+      "latency": {
+        "n": 48,
+        "p50_s": 0.5459,
+        "p95_s": 0.8718,
+        "max_s": 0.904
+      },
+      "errors": [],
+      "throughput_jobs_s": 13.304
+    },
+    "concurrent_same_task_id": {
+      "passed": true,
+      "elapsed_s": 3.124,
+      "requests": 24,
+      "execution_count": 1
+    },
+    "status_batch_vs_sequential": {
+      "passed": true,
+      "elapsed_s": 21.146,
+      "tasks": 16,
+      "sequential_s": 19.888,
+      "batch_s": 1.258
+    },
+    "idle_connection_drop_recovery": {
+      "passed": true,
+      "elapsed_s": 7.273,
+      "disconnect_recoveries": 5
+    },
+    "drop_after_remote_submission": {
+      "passed": true,
+      "elapsed_s": 4.26,
+      "execution_count": 1,
+      "same_id_recovered": true
+    },
+    "drop_during_read": {
+      "passed": true,
+      "elapsed_s": 2.215,
+      "read_recovered": true
+    },
+    "blackout_then_restore": {
+      "passed": true,
+      "elapsed_s": 13.903,
+      "bounded_failure_s": 11.045,
+      "recovered_after_blackout": true
+    },
+    "many_small_artifacts_delayed": {
+      "passed": true,
+      "elapsed_s": 1.064,
+      "files": 24
+    },
+    "download_connection_drop": {
+      "passed": true,
+      "elapsed_s": 2.505,
+      "download_recovered": true,
+      "no_partial_files": true
+    },
+    "8MiB_roundtrip_jitter": {
+      "passed": true,
+      "elapsed_s": 3.786,
+      "bytes": 8388608,
+      "fixture": "repeating bytes 0..255; highly compressible, not representative of PNG/qs/random data",
+      "ssh_compression_requested": true
+    }
+  },
+  "all_passed": true
+}

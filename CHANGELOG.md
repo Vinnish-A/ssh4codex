@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.2.0 — 2026-10-02
+
+- Added batched CLI/MCP status queries and one-stream multi-artifact downloads with streaming hashes and completion-gated atomic delivery.
+- Added bounded network retries for observations/downloads using fresh connections, configurable deadlines and default SSH compression; retain recovery IDs for incomplete submissions and uploads without automatic replay.
+- Detected truncated artifact/JSON responses even when a disconnected OpenSSH mux client reports exit 0, permitting one safe read retry without publishing partial files.
+- Protected concurrent local task registration with locks and atomic records; verified isolated network faults, 32-way real-server concurrency, transfer integrity and standalone releases.
+
 ## 0.1.0 — 2026-10-02
 
 - Added task-oriented CLI and seven official-SDK MCP tools using OpenSSH multiplexing and remote tmux, with durable task IDs, same-request deduplication, explicit states, incremental bounded logs, cancellation and timeout.

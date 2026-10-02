@@ -4,6 +4,7 @@
   "tools": [
     "remote_run",
     "remote_status",
+    "remote_status_many",
     "remote_wait",
     "remote_cancel",
     "remote_fetch",
@@ -11,5 +12,6 @@
     "remote_put"
   ],
   "remote_run_state": "succeeded",
-  "remote_task_discovery": true
+  "remote_task_discovery": true,
+  "batch_status": true
 }

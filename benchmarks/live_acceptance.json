@@ -1,7 +1,7 @@
 {
   "server": "solvinglab",
   "tmux_session": "data",
-  "remote_test_directory": "/mnt/nfs_data/xzh/ssh4codex-tests/ea49ad009718",
+  "remote_test_directory": "/mnt/nfs_data/xzh/ssh4codex-tests/2c64a3215264",
   "checks": [
     {
       "check": "doctor_python_tmux",
@@ -10,67 +10,67 @@
     {
       "check": "short_job_separate_streams",
       "passed": true,
-      "seconds": 0.673
+      "seconds": 0.601
     },
     {
       "check": "exit_7_is_failed",
       "passed": true,
-      "seconds": 0.619
+      "seconds": 0.747
     },
     {
       "check": "literal_quotes_unicode_binary_fetch",
       "passed": true,
-      "seconds": 1.708
+      "seconds": 1.143
     },
     {
       "check": "concurrent_retry_runs_once_and_conflict_rejected",
       "passed": true,
-      "seconds": 1.155
+      "seconds": 1.559
     },
     {
       "check": "incremental_utf8_logs_no_duplicates_or_loss",
       "passed": true,
-      "seconds": 18.366
+      "seconds": 13.474
     },
     {
       "check": "early_fetch_blocked_then_verified",
       "passed": true,
-      "seconds": 3.914
+      "seconds": 2.655
     },
     {
       "check": "changed_artifact_checksum_rejected",
       "passed": true,
-      "seconds": 1.581
+      "seconds": 1.866
     },
     {
       "check": "missing_artifact_reported",
       "passed": true,
-      "seconds": 1.333
+      "seconds": 0.971
     },
     {
       "check": "timeout_terminates_group",
       "passed": true,
-      "seconds": 1.537
+      "seconds": 1.571
     },
     {
       "check": "cancel_only_selected_task",
       "passed": true,
-      "seconds": 2.601
+      "seconds": 2.318
     },
     {
       "check": "transport_disconnect_and_fresh_client_recovery",
       "passed": true,
-      "seconds": 5.732
+      "seconds": 4.515
     },
     {
       "check": "512KiB_binary_upload_and_roundtrip",
       "passed": true,
-      "seconds": 24.584
+      "seconds": 2.004
     },
     {
       "check": "real_tidy_R_ggplot2_qs_and_PNG_fetch",
       "passed": true,
-      "seconds": 3.06
+      "seconds": 1.84
     }
   ],
   "all_passed": true

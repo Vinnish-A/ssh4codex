@@ -1,5 +1,6 @@
 """OpenSSH transport and task API. Private keys remain under OpenSSH control."""
 import base64
+import fcntl
 import hashlib
 import json
 import os
@@ -8,6 +9,9 @@ import shlex
 import subprocess
 import sys
 import shutil
+import tarfile
+import tempfile
+import threading
 import uuid
 
 from . import remote
@@ -44,6 +48,11 @@ def load_server(name):
     target = server['target']
     if target.startswith('-') or any(c.isspace() for c in target):
         raise SSHError('configuration', 'Invalid SSH target')
+    for option in ['connect_timeout', 'rpc_timeout', 'transfer_timeout']:
+        if option in server and (not isinstance(server[option], (int, float)) or server[option] <= 0):
+            raise SSHError('configuration', option + ' must be positive')
+    if 'compression' in server and not isinstance(server['compression'], bool):
+        raise SSHError('configuration', 'compression must be a boolean')
     return server
 
 
@@ -94,8 +103,9 @@ class Client:
         self.socket = self.server.get('control_path', str(sockets / transport_hash))
         self.options = ['-o', 'ControlMaster=auto',
                         '-o', 'ControlPersist=4h', '-o', 'ControlPath=' + self.socket,
-                        '-o', 'ConnectTimeout=8', '-o', 'ServerAliveInterval=15',
+                        '-o', 'ConnectTimeout=' + str(self.server.get('connect_timeout', 8)), '-o', 'ServerAliveInterval=5',
                         '-o', 'ServerAliveCountMax=2', '-o', 'BatchMode=yes']
+        self.options += ['-o', 'Compression=' + ('yes' if self.server.get('compression', True) else 'no')]
         if self.server.get('port') is not None:
             self.options += ['-p', str(self.server['port'])]
         if self.server.get('identity_file'):
@@ -108,12 +118,13 @@ class Client:
         self.agent_marker = root / (transport_hash + '-' + digest + '.installed')
         self.source = source
 
-    def ssh_argv(self, command):
-        return [ssh_program(), *self.options, self.server['target'], command]
+    def ssh_argv(self, command, fresh=False):
+        bypass = ['-o', 'ControlPath=none', '-o', 'ControlMaster=no'] if fresh else []
+        return [ssh_program(), *bypass, *self.options, self.server['target'], command]
 
-    def call_ssh(self, command, payload=None, timeout=20, uncertain_task=None):
+    def call_ssh(self, command, payload=None, timeout=20, uncertain_task=None, fresh=False):
         try:
-            result = subprocess.run(self.ssh_argv(command), input=payload, capture_output=True, timeout=timeout, env=transport_env())
+            result = subprocess.run(self.ssh_argv(command, fresh), input=payload, capture_output=True, timeout=timeout, env=transport_env())
         except subprocess.TimeoutExpired as exc:
             raise SSHError('submission_unknown' if uncertain_task else 'transport_timeout',
                            'SSH response timed out; remote task may still be running. Query status; do not resubmit with a new id.', uncertain_task) from exc
@@ -131,8 +142,16 @@ class Client:
     def install_agent(self):
         # The helper is immutable by hash, so new clients cannot replace a running task's code.
         code = "import sys,json,pathlib,tempfile,os; p=json.load(sys.stdin); f=pathlib.Path.home()/p['path']; f.parent.mkdir(parents=True,exist_ok=True,mode=0o700); fd,t=tempfile.mkstemp(dir=f.parent); h=os.fdopen(fd,'w'); h.write(p['source']); h.close(); os.chmod(t,0o700); os.replace(t,f)"
-        result = self.call_ssh('python3 -c ' + shlex.quote(code),
-                               json.dumps({'path': self.agent_relative, 'source': self.source.decode()}).encode())
+        command = 'python3 -c ' + shlex.quote(code)
+        payload = json.dumps({'path': self.agent_relative, 'source': self.source.decode()}).encode()
+        timeout = self.server.get('rpc_timeout', 10) + self.server.get('connect_timeout', 8)
+        try:
+            result = self.call_ssh(command, payload, timeout=timeout)
+        except SSHError as exc:
+            if exc.kind not in {'transport', 'transport_timeout'}:
+                raise
+            # Reinstalling the same immutable content is safe, unlike a task.
+            result = self.call_ssh(command, payload, timeout=timeout, fresh=True)
         if result.returncode:
             raise SSHError('setup', result.stderr.decode(errors='replace'))
         self.agent_marker.touch(mode=0o600)
@@ -143,18 +162,36 @@ class Client:
         # Relative path resolved under the SSH login home, independent of the project cwd.
         command = 'python3 ' + shlex.quote(self.agent_relative) + ' rpc'
         payload = json.dumps({'action': action, **args}).encode()
-        result = self.call_ssh(command, payload, timeout=max(20, args.get('wait_seconds', 0) + 10), uncertain_task=args.get('task_id') if action == 'submit' else None)
-        # A missing helper is a pre-execution failure; only this case is safe to retry.
-        if result.returncode == 2 and b"can't open file" in result.stderr:
-            self.install_agent()
-            result = self.call_ssh(command, payload, timeout=max(20, args.get('wait_seconds', 0) + 10), uncertain_task=args.get('task_id') if action == 'submit' else None)
-        try:
-            value = json.loads(result.stdout)
-        except json.JSONDecodeError as exc:
-            raise SSHError('protocol', 'Remote helper did not return JSON: ' + result.stderr.decode(errors='replace')[:1000]) from exc
-        if result.returncode:
-            raise SSHError('remote', value.get('message', str(value)), args.get('task_id'))
-        return value
+        timeout = self.server.get('rpc_timeout', 10) + args.get('wait_seconds', 0)
+        uncertain = args.get('task_id') if action == 'submit' else None
+        observation = action in {'status', 'status_many', 'wait', 'list', 'doctor'}
+        for attempt in range(2 if observation else 1):
+            budget = timeout + (self.server.get('connect_timeout', 8) if attempt else 0)
+            try:
+                result = self.call_ssh(command, payload, timeout=budget,
+                                       uncertain_task=uncertain, fresh=bool(attempt))
+            except SSHError as exc:
+                # Observations can be replayed on a fresh connection. Never
+                # kill a shared master or automatically resubmit side effects.
+                if observation and not attempt and exc.kind in {'transport', 'transport_timeout'}:
+                    continue
+                raise
+            # Missing helper is a verified pre-execution failure.
+            if result.returncode == 2 and b"can't open file" in result.stderr:
+                self.install_agent()
+                result = self.call_ssh(command, payload, timeout=budget,
+                                       uncertain_task=uncertain, fresh=bool(attempt))
+            try:
+                value = json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                # A disconnected mux client may return 0 with partial JSON.
+                if observation and not attempt and result.returncode == 0:
+                    continue
+                raise SSHError('submission_unknown' if uncertain else 'protocol',
+                               'Remote helper did not return complete JSON: ' + result.stderr.decode(errors='replace')[:1000], uncertain) from exc
+            if result.returncode:
+                raise SSHError('remote', value.get('message', str(value)), args.get('task_id'))
+            return value
 
     def submit(self, script, cwd=None, env=None, interpreter=None, artifacts=None, timeout=None, task_id=None, wait_seconds=0, limit=2048):
         task_id = task_id or uuid.uuid4().hex
@@ -165,10 +202,20 @@ class Client:
         # Persist identity before network mutation: recover even if the response is lost.
         path = self.local / ('task-' + task_id + '.json')
         record = {'server': self.name, 'task_id': task_id}
-        if path.exists() and json.loads(path.read_text()) != record:
-            raise SSHError('configuration', 'task_id already registered to another server')
-        path.write_text(json.dumps(record))
-        path.chmod(0o600)
+        with (self.local / ('task-' + task_id + '.lock')).open('a') as lock:
+            os.chmod(lock.name, 0o600)
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if path.exists():
+                if json.loads(path.read_text()) != record:
+                    raise SSHError('configuration', 'task_id already registered to another server')
+            else:
+                fd, temporary = tempfile.mkstemp(dir=self.local)
+                try:
+                    with os.fdopen(fd, 'w') as handle:
+                        json.dump(record, handle)
+                    os.replace(temporary, path)
+                finally:
+                    Path(temporary).unlink(missing_ok=True)
         if not 0 <= wait_seconds <= 60: raise ValueError('wait_seconds must be 0..60')
         return compact(self.rpc('submit', **spec, wait_seconds=wait_seconds, limit=limit))
 
@@ -180,6 +227,14 @@ class Client:
         if not 0 <= seconds <= 60:
             raise ValueError('wait must be between 0 and 60 seconds')
         return compact(self.rpc('wait', task_id=task_id, wait_seconds=seconds, limit=limit))
+
+    def status_many(self, task_ids, logs=False, limit=2048):
+        if not isinstance(task_ids, list) or not 1 <= len(task_ids) <= 64:
+            raise ValueError('status_many requires 1..64 task IDs')
+        for task_id in task_ids:
+            remote.job_dir(task_id)
+        value = self.rpc('status_many', task_ids=task_ids, logs=logs, limit=limit)
+        return {'tasks': [compact(item) for item in value['tasks']]}
 
     def cancel(self, task_id):
         return compact(self.rpc('cancel', task_id=task_id))
@@ -212,50 +267,127 @@ class Client:
         with source.open('rb') as handle:
             try:
                 proc = subprocess.run(self.ssh_argv('python3 -c ' + shlex.quote(code)),
-                                      stdin=handle, capture_output=True, timeout=300, env=transport_env())
+                                      stdin=handle, capture_output=True, timeout=self.server.get('transfer_timeout', 300), env=transport_env())
             except subprocess.TimeoutExpired as exc:
                 raise SSHError('transfer_unknown', 'Upload response timed out; inspect destination before retrying') from exc
         if proc.returncode:
-            raise SSHError('transfer', proc.stderr.decode(errors='replace'))
+            message = proc.stderr.decode(errors='replace')
+            if proc.returncode == 255:
+                if 'Permission denied' in message:
+                    raise SSHError('authentication', message)
+                if 'Host key verification failed' in message or 'REMOTE HOST IDENTIFICATION' in message:
+                    raise SSHError('host_key', message)
+                raise SSHError('transfer_unknown', 'Upload response lost; verify destination before retrying: ' + message)
+            raise SSHError('transfer', message)
         return json.loads(proc.stdout)
 
     def fetch(self, task_id, destination):
-        state = self.status(task_id, logs=False)
-        if state['state'] != 'succeeded':
-            raise SSHError('artifact_not_ready', 'Fetch requires a succeeded task; current state: ' + state['state'])
+        remote.job_dir(task_id)
+        if not self.agent_marker.exists():
+            self.install_agent()
+        try:
+            return self._fetch_once(task_id, destination)
+        except SSHError as exc:
+            if exc.kind == 'helper_missing':
+                self.install_agent()
+                return self._fetch_once(task_id, destination)
+            if exc.kind in {'transport', 'transport_timeout'}:
+                return self._fetch_once(task_id, destination, fresh=True)
+            raise
+
+    def _fetch_once(self, task_id, destination, fresh=False):
         target = Path(destination).expanduser()
         target.mkdir(parents=True, exist_ok=True)
-        records = state.get('artifacts', [])
-        missing = [r['path'] for r in records if not r['exists']]
-        if missing:
-            raise SSHError('artifact_missing', 'Expected artifact missing: ' + ', '.join(missing))
-        basenames = [Path(r['path']).name for r in records]
-        if len(set(basenames)) != len(basenames):
-            raise SSHError('artifact_collision', 'Artifacts have duplicate basenames; declare unique output names')
+        command = 'python3 ' + shlex.quote(self.agent_relative) + ' download ' + shlex.quote(task_id)
+        temporary = []
         fetched = []
-        for item in records:
-            path_encoded = base64.b64encode(item['path'].encode()).decode()
-            code = "import base64,sys,shutil; f=open(base64.b64decode('" + path_encoded + "').decode(),'rb'); shutil.copyfileobj(f,sys.stdout.buffer)"
-            dest = target / Path(item['path']).name
-            tmp = dest.with_name(dest.name + '.ssh4codex-part-' + uuid.uuid4().hex)
+        timeout = self.server.get('transfer_timeout', 300)
+        expired = threading.Event()
+        with tempfile.TemporaryFile() as errors:
+            proc = subprocess.Popen(self.ssh_argv(command, fresh), stdout=subprocess.PIPE,
+                                    stderr=errors, env=transport_env())
+            def stop():
+                expired.set()
+                proc.kill()
+            timer = threading.Timer(timeout, stop)
+            timer.daemon = True
+            timer.start()
+            failure = None
             try:
-                with tmp.open('wb') as out:
-                    proc = subprocess.Popen(self.ssh_argv('python3 -c ' + shlex.quote(code)), stdout=out, stderr=subprocess.PIPE, env=transport_env())
+                try:
+                    with tarfile.open(fileobj=proc.stdout, mode='r|') as stream:
+                        header = stream.next()
+                        if header is None or header.name != 'manifest.json' or not header.isfile() or header.size > 16 * 1024 * 1024:
+                            raise SSHError('protocol', 'Missing or invalid artifact manifest')
+                        manifest = json.load(stream.extractfile(header))
+                        if manifest['task_id'] != task_id:
+                            raise SSHError('protocol', 'Artifact manifest belongs to another task')
+                        records = manifest['files']
+                        names = [Path(item['path']).name for item in records]
+                        if len(set(names)) != len(names):
+                            raise SSHError('artifact_collision', 'Artifacts have duplicate basenames')
+                        for i, item in enumerate(records):
+                            header = stream.next()
+                            if header is None:
+                                raise SSHError('transport', 'Artifact stream ended before declared files arrived')
+                            if header.name != str(i) or not header.isfile() or header.size != item['size']:
+                                raise SSHError('protocol', 'Incomplete or invalid artifact stream')
+                            fd, name = tempfile.mkstemp(prefix='.ssh4codex-part-', dir=target)
+                            tmp = Path(name)
+                            temporary.append((tmp, target / names[i]))
+                            digest = hashlib.sha256()
+                            with os.fdopen(fd, 'wb') as out:
+                                content = stream.extractfile(header)
+                                for chunk in iter(lambda: content.read(1024 * 1024), b''):
+                                    digest.update(chunk)
+                                    out.write(chunk)
+                            if digest.hexdigest() != item['sha256'] or tmp.stat().st_size != item['size']:
+                                raise SSHError('artifact_changed', 'Artifact changed since task completion: ' + item['path'])
+                            fetched.append({'path': str((target / names[i]).resolve()), 'size': item['size'], 'sha256': item['sha256']})
+                        if stream.next() is not None:
+                            raise SSHError('protocol', 'Unexpected artifact stream member')
+                except (tarfile.TarError, ValueError, KeyError, SSHError) as exc:
+                    failure = exc
+                if failure:
+                    # Drain framing/trailers so a remote error can be reported.
+                    while proc.stdout.read(65536):
+                        pass
+                proc.wait()
+                errors.seek(0)
+                stderr = errors.read(4096).decode(errors='replace')
+                if expired.is_set():
+                    raise SSHError('transport_timeout', 'Artifact download timed out')
+                if proc.returncode == 255:
+                    if 'Permission denied' in stderr:
+                        raise SSHError('authentication', stderr)
+                    if 'Host key verification failed' in stderr or 'REMOTE HOST IDENTIFICATION' in stderr:
+                        raise SSHError('host_key', stderr)
+                    raise SSHError('transport', stderr)
+                if proc.returncode:
+                    if proc.returncode == 2 and "can't open file" in stderr:
+                        raise SSHError('helper_missing', stderr)
                     try:
-                        _, stderr = proc.communicate(timeout=300)
-                    except subprocess.TimeoutExpired:
-                        proc.kill(); proc.communicate()
-                        raise SSHError('transport_timeout', 'Artifact download timed out')
-                    if proc.returncode:
-                        raise SSHError('transfer', stderr.decode(errors='replace'))
-                digest = hashlib.sha256()
-                with tmp.open('rb') as handle:
-                    for chunk in iter(lambda: handle.read(1024 * 1024), b''):
-                        digest.update(chunk)
-                if digest.hexdigest() != item['sha256'] or tmp.stat().st_size != item['size']:
-                    raise SSHError('artifact_changed', 'Artifact changed since task completion: ' + item['path'])
-                tmp.replace(dest)
-                fetched.append({'path': str(dest.resolve()), 'size': item['size'], 'sha256': item['sha256']})
+                        error = json.loads(stderr)
+                    except ValueError:
+                        raise SSHError('transfer', stderr)
+                    raise SSHError(error['error'], error['message'])
+                if failure:
+                    if isinstance(failure, SSHError):
+                        raise failure
+                    # A mux client can exit 0 when the master loses its TCP
+                    # stream. Declared framing detects truncation independently.
+                    if isinstance(failure, tarfile.ReadError) and str(failure) in {'unexpected end of data', 'empty file', 'truncated header'}:
+                        raise SSHError('transport', 'Artifact stream was truncated despite SSH exit status 0') from failure
+                    raise SSHError('protocol', 'Invalid artifact stream: ' + str(failure)) from failure
+                # Publish only after the complete stream and exit code verify.
+                for tmp, dest in temporary:
+                    tmp.replace(dest)
+                return {'task_id': task_id, 'files': fetched}
             finally:
-                tmp.unlink(missing_ok=True)
-        return {'task_id': task_id, 'files': fetched}
+                timer.cancel()
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait()
+                proc.stdout.close()
+                for tmp, _ in temporary:
+                    tmp.unlink(missing_ok=True)

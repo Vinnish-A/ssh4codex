@@ -105,3 +105,19 @@ def test_artifact_hash(spool):
     remote.worker(spec['task_id'])
     item = remote.read_state(folder)['artifacts'][0]
     assert item['exists'] and item['size'] == 7 and len(item['sha256']) == 64
+
+
+def test_download_running_is_blocked(spool):
+    spec, folder = queued(spool)
+    with pytest.raises(remote.DownloadError) as exc:
+        remote.download(spec['task_id'])
+    assert exc.value.kind == 'artifact_not_ready'
+
+
+def test_batch_status_reports_missing_without_losing_success(spool):
+    spec, folder = queued(spool)
+    remote.worker(spec['task_id'])
+    result = remote.dispatch({'action': 'status_many', 'task_ids': [spec['task_id'], 'missing']})
+    assert result['tasks'][0]['state'] == 'succeeded'
+    assert 'stdout' not in result['tasks'][0]
+    assert result['tasks'][1]['task_id'] == 'missing' and result['tasks'][1]['error']

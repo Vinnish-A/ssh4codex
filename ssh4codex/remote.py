@@ -2,6 +2,7 @@
 import argparse
 import fcntl
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import tarfile
 import time
 from contextlib import contextmanager
 
@@ -205,14 +207,15 @@ def bounded_log(path, cursor, limit, tail):
                 'remaining': max(0, size - start - len(content)), 'skipped': start - cursor}
 
 
-def status(request):
+def status(request, alive=None):
     folder = job_dir(request['task_id'])
     state = read_state(folder)
     # The wrapper publishes an exit status, rather than relying on terminal prompt guesses.
     if state['state'] in {'queued', 'running'} and state.get('pane'):
-        panes = subprocess.run(['tmux', 'list-panes', '-a', '-F', '#{pane_id} #{pane_dead}'],
-                               text=True, capture_output=True)
-        alive = {line.split()[0] for line in panes.stdout.splitlines() if line.endswith(' 0')}
+        if alive is None:
+            panes = subprocess.run(['tmux', 'list-panes', '-a', '-F', '#{pane_id} #{pane_dead}'],
+                                   text=True, capture_output=True)
+            alive = {line.split()[0] for line in panes.stdout.splitlines() if line.endswith(' 0')}
         if state['pane'] not in alive:
             with locked(folder):
                 state = read_state(folder)
@@ -224,6 +227,40 @@ def status(request):
         state['stdout'] = bounded_log(folder / 'stdout.log', request.get('stdout_cursor', 0), limit, request.get('tail', False))
         state['stderr'] = bounded_log(folder / 'stderr.log', request.get('stderr_cursor', 0), limit, request.get('tail', False))
     return state
+
+
+class DownloadError(ValueError):
+    def __init__(self, kind, message):
+        super().__init__(message)
+        self.kind = kind
+
+
+def download(task_id):
+    """One stream: completion manifest, then numbered regular-file payloads."""
+    state = status({'task_id': task_id, 'logs': False})
+    if state['state'] != 'succeeded':
+        raise DownloadError('artifact_not_ready', 'Fetch requires a succeeded task; current state: ' + state['state'])
+    records = state.get('artifacts', [])
+    if any(not item['exists'] for item in records):
+        raise DownloadError('artifact_missing', 'Expected artifact missing')
+    names = [Path(item['path']).name for item in records]
+    if len(set(names)) != len(names):
+        raise DownloadError('artifact_collision', 'Artifacts have duplicate basenames')
+    manifest = json.dumps({'task_id': task_id, 'files': records}).encode()
+    with tarfile.open(fileobj=sys.stdout.buffer, mode='w|') as stream:
+        header = tarfile.TarInfo('manifest.json')
+        header.size = len(manifest)
+        stream.addfile(header, io.BytesIO(manifest))
+        for i, item in enumerate(records):
+            try:
+                with open(item['path'], 'rb') as handle:
+                    if os.fstat(handle.fileno()).st_size != item['size']:
+                        raise DownloadError('artifact_changed', 'Artifact size changed since completion')
+                    header = tarfile.TarInfo(str(i))
+                    header.size = item['size']
+                    stream.addfile(header, handle)
+            except FileNotFoundError as exc:
+                raise DownloadError('artifact_changed', 'Artifact removed since completion') from exc
 
 
 def wait_status(request):
@@ -248,6 +285,20 @@ def dispatch(request):
         return wait_status(request)
     if action == 'status':
         return status(request)
+    if action == 'status_many':
+        ids = request['task_ids']
+        if not isinstance(ids, list) or not 1 <= len(ids) <= 64:
+            raise ValueError('status_many requires 1..64 task IDs')
+        panes = subprocess.run(['tmux', 'list-panes', '-a', '-F', '#{pane_id} #{pane_dead}'],
+                               text=True, capture_output=True)
+        alive = {line.split()[0] for line in panes.stdout.splitlines() if line.endswith(' 0')}
+        result = []
+        for task_id in ids:
+            try:
+                result.append(status({**request, 'task_id': task_id, 'logs': request.get('logs', False), 'tail': True}, alive))
+            except (ValueError, FileNotFoundError) as exc:
+                result.append({'task_id': task_id, 'error': str(exc)})
+        return {'tasks': result}
     if action == 'cancel':
         folder = job_dir(request['task_id'])
         with locked(folder):
@@ -269,11 +320,17 @@ def dispatch(request):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['rpc', 'worker'])
+    parser.add_argument('action', choices=['rpc', 'worker', 'download'])
     parser.add_argument('task_id', nargs='?')
     args = parser.parse_args()
     if args.action == 'worker':
         worker(args.task_id)
+    elif args.action == 'download':
+        try:
+            download(args.task_id)
+        except Exception as exc:
+            print(json.dumps({'error': getattr(exc, 'kind', 'transfer'), 'message': str(exc)}), file=sys.stderr)
+            sys.exit(1)
     else:
         try:
             print(json.dumps(dispatch(json.load(sys.stdin)), ensure_ascii=False))

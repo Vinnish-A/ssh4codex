@@ -76,3 +76,5 @@ v0.2.0 [GitHub Actions 发布构建](https://github.com/Vinnish-A/ssh4codex/acti
 ## v0.2.1 Codex 协作工作流
 
 三个实际 Codex subagent 完成合成 R 分析、混合 MCP worker 和跨进程交接；主 agent 完成提交确认丢失恢复，以及对 21 个源任务 / 24 份远端产物的独立核验和汇总。并发冷工具缓存下载暴露了 SSH 子进程继承 MCP 输入的问题，修复后全新会话的十一路下载通过。27 项单元测试及独立包无外部 PATH 的 CLI / 内置 SSH / MCP 验证通过。版本、耗时、首次失败和复现入口见 [工作流报告](CODEX_WORKFLOWS.md)。
+
+[`v0.2.1`](https://github.com/Vinnish-A/ssh4codex/releases/tag/v0.2.1) 的 [GitHub Actions 发布构建](https://github.com/Vinnish-A/ssh4codex/actions/runs/36975183364) 成功。从 GitHub 正式资产下载、SHA256 安装并替换本地候选包后，再次验证无外部 PATH 的 CLI / 内置 SSH / MCP 8 工具、Solvinglab doctor、全新 MCP 会话十一路并发下载及 14 个任务批量状态；所有文件 SHA256 与完成时 manifest 一致。

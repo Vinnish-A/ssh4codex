@@ -1,8 +1,8 @@
 {
   "runtime": "ssh4codex 0.3.0",
   "passed": true,
-  "run_id": "d80453a783",
-  "elapsed_seconds": 14.026,
+  "run_id": "b194439cc6",
+  "elapsed_seconds": 6.464,
   "interactive_connections": 5,
   "checks": {
     "configured_default_created_and_attached": true,

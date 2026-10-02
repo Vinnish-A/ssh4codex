@@ -83,4 +83,6 @@ v0.2.0 [GitHub Actions 发布构建](https://github.com/Vinnish-A/ssh4codex/acti
 
 31 项单元测试通过，覆盖交互终端要求、目标校验、断线时保留最近选择、原子私有记录，以及人工选择不改变自动任务的会话。独立包在无外部 PATH 下通过 connect 帮助、CLI / 内置 SSH / MCP 8 工具验证。
 
-`tests/tmux_connect.py --run` 在独立包上通过 5 次真实 PTY 连接，完整验收耗时 14.026 秒（包含观察和验证，不是纯建连延迟）。测试创建两个专用合成会话，验证配置默认会话直接创建并进入、同时接入两个客户端而不踢掉第一个、分离后重新连接仍能读取原 shell 环境变量，以及显式选择另一个会话后新客户端直接接回该会话。测试只清理自己的两个会话和 SSH master，没有改动 data 或科研项目。可复核测量见 [tmux 接入报告](../benchmarks/tmux_connect.json)。
+`tests/tmux_connect.py --run` 在候选独立包和正式发布包上分别通过 5 次真实 PTY 连接，完整验收耗时分别为 14.026 秒和 6.464 秒（包含观察和验证，不是纯建连延迟，也不能据此推算优化倍数）。测试创建两个专用合成会话，验证配置默认会话直接创建并进入、同时接入两个客户端而不踢掉第一个、分离后重新连接仍能读取原 shell 环境变量，以及显式选择另一个会话后新客户端直接接回该会话。测试只清理自己的两个会话和 SSH master，没有改动 data 或科研项目。正式包可复核测量见 [tmux 接入报告](../benchmarks/tmux_connect.json)。
+
+[`v0.3.0`](https://github.com/Vinnish-A/ssh4codex/releases/tag/v0.3.0) 的 [GitHub Actions 发布构建](https://github.com/Vinnish-A/ssh4codex/actions/runs/36977161933) 成功。从 GitHub 正式资产下载并通过 SHA256 安装后，再次完成无外部 PATH 的 CLI / connect 帮助 / 内置 SSH / MCP 验证，以及上述真实 PTY 连接。维护者本机已升级为 0.3.0。

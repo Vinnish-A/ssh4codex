@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.5.0 — 2026-10-03
+
+- Added resumable uploads over dedicated SSH connections, verified partial-file prefixes, bounded retries, inspectable transfer IDs and protection against overwriting a destination changed during transfer.
+- Added saved-request recovery with fresh status checks, verified input staging and executable preflight checks; submission uncertainty never automatically replays a task.
+- Added external execution profiles, consumer-specific persistent log cursors, per-call transport overrides and optional success-only artifact delivery, with CLI/MCP recovery tools and structured diagnostics.
+
 ## 0.4.0 — 2026-10-02
 
 - Removed the bundled server catalog and deployment templates. Connections now require an external profile with an explicit SSH target and tmux session.

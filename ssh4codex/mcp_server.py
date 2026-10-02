@@ -12,9 +12,10 @@ mcp = FastMCP('ssh4codex', log_level='WARNING')
 
 async def invoke(server, method, *args, **kwargs):
     try:
-        return await asyncio.to_thread(getattr(Client(server), method), *args, **kwargs)
+        transport = {key: kwargs.pop(key) for key in ('fresh_connection', 'rpc_timeout', 'transfer_timeout') if key in kwargs}
+        return await asyncio.to_thread(getattr(Client(server, **transport), method), *args, **kwargs)
     except (SSHError, ValueError, OSError, KeyError) as exc:
-        return {'error': getattr(exc, 'kind', type(exc).__name__), 'message': str(exc),
+        return {'error': getattr(exc, 'kind', type(exc).__name__), 'message': str(exc), **getattr(exc, 'details', {}),
                 **({'task_id': exc.task_id} if getattr(exc, 'task_id', None) else {})}
 
 
@@ -22,18 +23,21 @@ async def invoke(server, method, *args, **kwargs):
 async def remote_run(server: str, script: str, cwd: str | None = None,
                      interpreter: list[str] | None = None, env: dict[str, str] | None = None,
                      artifacts: list[str] | None = None, timeout: float | None = None,
-                     task_id: str | None = None, wait_seconds: float = 2) -> dict[str, Any]:
+                     task_id: str | None = None, wait_seconds: float = 2,
+                     inputs: dict[str, str] | None = None, requires: list[str] | None = None,
+                     profile: str | None = None, fresh_connection: bool = False) -> dict[str, Any]:
     """Run a script in remote tmux. Reuse task_id after uncertainty; never invent a retry id. Logs bounded to 2KB per stream."""
     if not 0 <= wait_seconds <= 60:
         return {'error': 'validation', 'message': 'wait_seconds must be 0..60'}
-    return await invoke(server, 'submit', script, cwd, env, interpreter, artifacts, timeout, task_id, wait_seconds)
+    return await invoke(server, 'submit', script, cwd, env, interpreter, artifacts, timeout, task_id, wait_seconds, inputs=inputs, requires=requires, profile=profile, fresh_connection=fresh_connection)
 
 
 @mcp.tool()
 async def remote_status(server: str, task_id: str, stdout_cursor: int = 0,
-                        stderr_cursor: int = 0, limit: int = 2048, tail: bool = False) -> dict[str, Any]:
+                        stderr_cursor: int = 0, limit: int = 2048, tail: bool = False,
+                        fresh_connection: bool = False, rpc_timeout: float | None = None) -> dict[str, Any]:
     """Read state and incremental stdout/stderr. Save returned byte cursors; remaining reports unread data."""
-    return await invoke(server, 'status', task_id, stdout_cursor, stderr_cursor, limit, tail)
+    return await invoke(server, 'status', task_id, stdout_cursor, stderr_cursor, limit, tail, fresh_connection=fresh_connection, rpc_timeout=rpc_timeout)
 
 
 @mcp.tool()
@@ -56,9 +60,9 @@ async def remote_cancel(server: str, task_id: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def remote_fetch(server: str, task_id: str, destination: str) -> dict[str, Any]:
+async def remote_fetch(server: str, task_id: str, destination: str, transfer_timeout: float | None = None) -> dict[str, Any]:
     """Fetch declared artifacts only after success, verifying completion-time SHA256 before atomic replace."""
-    return await invoke(server, 'fetch', task_id, destination)
+    return await invoke(server, 'fetch', task_id, destination, transfer_timeout=transfer_timeout)
 
 
 @mcp.tool()
@@ -68,9 +72,33 @@ async def remote_tasks(server: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def remote_put(server: str, source: str, destination: str) -> dict[str, Any]:
+async def remote_put(server: str, source: str, destination: str, retries: int = 2, transfer_timeout: float | None = None) -> dict[str, Any]:
     """Upload a local file by path, with SHA256 verification and atomic replace; file contents stay out of tool output."""
-    return await invoke(server, 'put', source, destination)
+    return await invoke(server, 'put', source, destination, retries=retries, transfer_timeout=transfer_timeout)
+
+
+@mcp.tool()
+async def remote_recover(server: str, task_id: str, retry: bool = False) -> dict[str, Any]:
+    """Fresh status first; explicit retry replays the saved original request only if no task exists."""
+    return await invoke(server, 'recover', task_id, retry)
+
+
+@mcp.tool()
+async def remote_poll(server: str, task_id: str, consumer: str, limit: int = 2048, reset: bool = False) -> dict[str, Any]:
+    """Incremental logs with persistent consumer-specific cursors; use a different consumer per agent."""
+    return await invoke(server, 'poll', task_id, consumer, limit, reset)
+
+
+@mcp.tool()
+async def remote_transfer_status(server: str, transfer_id: str) -> dict[str, Any]:
+    """Inspect received upload bytes. Complete means the destination was atomically committed."""
+    return await invoke(server, 'transfer_status', transfer_id)
+
+
+@mcp.tool()
+async def remote_doctor(server: str, requires: list[str] | None = None, profile: str | None = None) -> dict[str, Any]:
+    """Check remote tmux and opt-in executable requirements using an external execution profile."""
+    return await invoke(server, 'doctor', requires=requires, profile=profile)
 
 
 def main():

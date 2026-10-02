@@ -39,7 +39,7 @@ async def check(package):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 tools = await session.list_tools()
-                assert len(tools.tools) == 8
+                assert {item.name for item in tools.tools} == {'remote_run', 'remote_status', 'remote_status_many', 'remote_wait', 'remote_cancel', 'remote_fetch', 'remote_tasks', 'remote_put', 'remote_recover', 'remote_poll', 'remote_transfer_status', 'remote_doctor'}
                 response = await session.call_tool('remote_tasks', {'server': 'missing-smoke-server'})
                 assert response.structuredContent['error'] == 'configuration'
         print(json.dumps({'standalone': True, 'cli': True, 'bundled_ssh': True,

@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import shlex
 import signal
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -28,6 +29,7 @@ def job_dir(task_id):
 def atomic_json(path, value):
     tmp = path.with_name(path.name + '.tmp')
     tmp.write_text(json.dumps(value, ensure_ascii=False))
+    tmp.chmod(0o600)
     tmp.replace(path)
 
 
@@ -39,8 +41,17 @@ def locked(folder):
         yield
 
 
+class RemoteError(ValueError):
+    def __init__(self, kind, message):
+        super().__init__(message)
+        self.kind = kind
+
+
 def read_state(folder):
-    return json.loads((folder / 'state.json').read_text())
+    try:
+        return json.loads((folder / 'state.json').read_text())
+    except FileNotFoundError as exc:
+        raise RemoteError('task_not_found', 'Task has no recorded state: ' + folder.name) from exc
 
 
 def write_state(folder, **updates):
@@ -57,16 +68,18 @@ def tmux(*args):
 def submit(request):
     folder = job_dir(request['task_id'])
     spec = {k: request.get(k) for k in ['script', 'cwd', 'env', 'interpreter', 'artifacts', 'timeout', 'session']}
+    for key in ('inputs', 'requires'):
+        if request.get(key): spec[key] = request[key]
     fingerprint = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
     with locked(folder):
         if (folder / 'state.json').exists():
             state = read_state(folder)
             if state['request_sha256'] != fingerprint:
-                raise ValueError('task_id already belongs to a different request')
+                raise RemoteError('request_conflict', 'task_id already belongs to a different request')
             return {**state, 'reused': True}
         cwd = Path(spec['cwd']).expanduser().resolve()
         if not cwd.is_dir():
-            raise ValueError('Remote cwd does not exist: ' + str(cwd))
+            raise RemoteError('preflight_failed', 'Remote cwd does not exist: ' + str(cwd))
         if not isinstance(spec['script'], str) or not spec['script']:
             raise ValueError('A nonempty script is required')
         if spec['timeout'] is not None and spec['timeout'] <= 0:
@@ -75,6 +88,7 @@ def submit(request):
             raise ValueError('interpreter must be a nonempty argv list')
         if not all(isinstance(k, str) and isinstance(v, str) for k, v in spec['env'].items()):
             raise ValueError('Environment keys and values must be strings')
+        check_environment(spec, cwd)
         # Check the requested session, without changing its user's windows.
         session = spec['session']
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', session):
@@ -297,7 +311,7 @@ def dispatch(request):
             try:
                 result.append(status({**request, 'task_id': task_id, 'logs': request.get('logs', False), 'tail': True}, alive))
             except (ValueError, FileNotFoundError) as exc:
-                result.append({'task_id': task_id, 'error': str(exc)})
+                result.append({'task_id': task_id, 'error': getattr(exc, 'kind', 'remote'), 'message': str(exc)})
         return {'tasks': result}
     if action == 'cancel':
         folder = job_dir(request['task_id'])
@@ -312,19 +326,179 @@ def dispatch(request):
             s = json.loads(p.read_text())
             records.append({k: s.get(k) for k in ['task_id', 'state', 'exit_code', 'submitted_at', 'session']})
         return {'tasks': records}
+    if action == 'upload_prepare': return upload_prepare(request)
+    if action == 'upload_status': return upload_status(request['transfer_id'])
     if action == 'doctor':
         tm = subprocess.run(['tmux', '-V'], capture_output=True, text=True)
-        return {'python': sys.version.split()[0], 'tmux': tm.stdout.strip(), 'tmux_exit_code': tm.returncode, 'root': str(ROOT)}
+        required = request.get('requires', [])
+        resolved = resolve_executables(required, request.get('cwd', '~'), request.get('env', {}))
+        return {'python': sys.version.split()[0], 'tmux': tm.stdout.strip(), 'tmux_exit_code': tm.returncode, 'root': str(ROOT), 'executables': resolved, 'ready': tm.returncode == 0 and all(resolved.values())}
     raise ValueError('Unknown action: ' + action)
+
+
+
+def file_digest(path, limit=None):
+    digest = hashlib.sha256()
+    with Path(path).open('rb') as handle:
+        remaining = limit
+        while remaining is None or remaining > 0:
+            chunk = handle.read(1024 * 1024 if remaining is None else min(1024 * 1024, remaining))
+            if not chunk: break
+            digest.update(chunk)
+            if remaining is not None: remaining -= len(chunk)
+    return digest.hexdigest()
+
+
+def resolve_executables(names, cwd, env):
+    directory = Path(cwd).expanduser().resolve()
+    search = dict(os.environ, **env).get('PATH', os.defpath)
+    result = {}
+    for name in names:
+        if not isinstance(name, str) or not name:
+            raise RemoteError('preflight_failed', 'Required executable must be a nonempty string')
+        if '/' in name:
+            path = Path(name).expanduser()
+            if not path.is_absolute(): path = directory / path
+            result[name] = str(path) if path.is_file() and os.access(path, os.X_OK) else None
+        else:
+            # Relative PATH entries belong to the requested task directory.
+            absolute_search = os.pathsep.join(str(directory / part) if not Path(part).is_absolute() else part
+                                             for part in search.split(os.pathsep))
+            result[name] = shutil.which(name, path=absolute_search)
+    return result
+
+
+def check_environment(spec, cwd):
+    executables = resolve_executables([spec['interpreter'][0], *spec.get('requires', [])], cwd, spec['env'])
+    missing = [name for name, path in executables.items() if path is None]
+    if missing:
+        raise RemoteError('preflight_failed', 'Required executable unavailable: ' + ', '.join(missing))
+    for item in spec.get('inputs', []):
+        path = Path(item['path']).expanduser()
+        if not path.is_absolute(): path = cwd / path
+        if not path.is_file() or path.stat().st_size != item['size'] or file_digest(path) != item['sha256']:
+            raise RemoteError('preflight_failed', 'Input missing or changed: ' + str(path))
+
+
+def transfer_dir(transfer_id):
+    if not re.fullmatch(r'[a-f0-9]{32}', transfer_id):
+        raise ValueError('Invalid transfer_id')
+    return ROOT / 'transfers' / transfer_id
+
+
+@contextmanager
+def transfer_lock(folder):
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (folder / 'lock').open('a') as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise RemoteError('transfer_busy', 'This transfer already has an active writer; query transfer-status') from exc
+        yield
+
+
+def target_fingerprint(path):
+    if not path.exists(): return None
+    if not path.is_file(): raise RemoteError('transfer_conflict', 'Destination is not a regular file')
+    return {'size': path.stat().st_size, 'sha256': file_digest(path)}
+
+
+def upload_status(transfer_id):
+    folder = transfer_dir(transfer_id)
+    try:
+        info = json.loads((folder / 'transfer.json').read_text())
+    except FileNotFoundError as exc:
+        raise RemoteError('transfer_not_found', 'No transfer record: ' + transfer_id) from exc
+    stage = Path(info['stage_path'])
+    received = stage.stat().st_size if stage.exists() else (info['size'] if info['phase'] == 'complete' else 0)
+    return {k: info[k] for k in ('transfer_id', 'path', 'size', 'sha256', 'phase')} | {'bytes_received': received}
+
+
+def upload_prepare(request):
+    transfer_id = request['transfer_id']; folder = transfer_dir(transfer_id)
+    destination = Path(request['destination']).expanduser().resolve()
+    spec = {'path': str(destination), 'size': request['size'], 'sha256': request['sha256'], 'mode': request['mode']}
+    if not isinstance(spec['size'], int) or spec['size'] < 0 or not re.fullmatch(r'[a-f0-9]{64}', spec['sha256']):
+        raise ValueError('Invalid transfer size or digest')
+    if not isinstance(spec['mode'], int) or not 0 <= spec['mode'] <= 0o777:
+        raise ValueError('Upload mode must be 000..777')
+    with transfer_lock(folder):
+        metadata = folder / 'transfer.json'
+        if metadata.exists():
+            info = json.loads(metadata.read_text())
+            if any(info[k] != value for k, value in spec.items()):
+                raise RemoteError('transfer_conflict', 'Transfer ID belongs to a different file request')
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            info = {**spec, 'transfer_id': transfer_id, 'baseline': target_fingerprint(destination),
+                    'phase': 'ready', 'stage_path': str(destination.parent / ('.ssh4codex-' + transfer_id + '.part'))}
+            atomic_json(metadata, info); metadata.chmod(0o600)
+        current = target_fingerprint(destination)
+        expected = {'size': info['size'], 'sha256': info['sha256']}
+        if current == expected:
+            destination.chmod(info['mode'])
+            info['phase'] = 'complete'; atomic_json(metadata, info)
+            Path(info['stage_path']).unlink(missing_ok=True)
+            return {**upload_status(transfer_id), 'offset': info['size'], 'prefix_sha256': info['sha256']}
+        if info['phase'] == 'complete' or current != info['baseline']:
+            raise RemoteError('transfer_conflict', 'Destination changed after this transfer began; it was not overwritten')
+        stage = Path(info['stage_path'])
+        offset = stage.stat().st_size if stage.exists() else 0
+        if offset > info['size']:
+            raise RemoteError('transfer_integrity', 'Partial file exceeds the declared size')
+        return {**upload_status(transfer_id), 'offset': offset,
+                'prefix_sha256': file_digest(stage) if stage.exists() else hashlib.sha256(b'').hexdigest()}
+
+
+def upload_stream(transfer_id, offset, source):
+    folder = transfer_dir(transfer_id)
+    with transfer_lock(folder):
+        info = json.loads((folder / 'transfer.json').read_text())
+        stage = Path(info['stage_path']); destination = Path(info['path'])
+        if info['phase'] == 'complete':
+            raise RemoteError('transfer_busy', 'Transfer already completed; verify with put before retrying')
+        if offset != (stage.stat().st_size if stage.exists() else 0):
+            raise RemoteError('transfer_busy', 'Partial offset changed; query and verify before resuming')
+        info['phase'] = 'sending'; atomic_json(folder / 'transfer.json', info)
+        with stage.open('ab', buffering=0) as handle:
+            stage.chmod(0o600)
+            while chunk := source.read(512 * 1024):
+                if handle.tell() + len(chunk) > info['size']:
+                    raise RemoteError('transfer_integrity', 'Upload exceeds declared size')
+                handle.write(chunk)
+            os.fsync(handle.fileno())
+        info['phase'] = 'verifying'; atomic_json(folder / 'transfer.json', info)
+        if stage.stat().st_size != info['size']:
+            info['phase'] = 'partial'; atomic_json(folder / 'transfer.json', info)
+            raise RemoteError('transfer_incomplete', 'Upload interrupted; verified resume is available')
+        if file_digest(stage) != info['sha256']:
+            raise RemoteError('transfer_integrity', 'Upload checksum mismatch; destination was not replaced')
+        # Serialize competing transfers to the same destination during compare-and-replace.
+        destination_lock = ROOT / 'transfer-destinations' / hashlib.sha256(str(destination).encode()).hexdigest()
+        with locked(destination_lock):
+            current = target_fingerprint(destination)
+            expected = {'size': info['size'], 'sha256': info['sha256']}
+            if current != info['baseline'] and current != expected:
+                raise RemoteError('transfer_conflict', 'Destination changed during upload; it was not overwritten')
+            os.chmod(stage, info['mode']); os.replace(stage, destination)
+            info['phase'] = 'complete'; atomic_json(folder / 'transfer.json', info)
+        return upload_status(transfer_id)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['rpc', 'worker', 'download'])
+    parser.add_argument('action', choices=['rpc', 'worker', 'download', 'upload'])
     parser.add_argument('task_id', nargs='?')
+    parser.add_argument('offset', nargs='?', type=int)
     args = parser.parse_args()
     if args.action == 'worker':
         worker(args.task_id)
+    elif args.action == 'upload':
+        try:
+            print(json.dumps(upload_stream(args.task_id, args.offset, sys.stdin.buffer)))
+        except Exception as exc:
+            print(json.dumps({'error': getattr(exc, 'kind', 'transfer'), 'message': str(exc)}))
+            sys.exit(1)
     elif args.action == 'download':
         try:
             download(args.task_id)
@@ -335,5 +509,5 @@ if __name__ == '__main__':
         try:
             print(json.dumps(dispatch(json.load(sys.stdin)), ensure_ascii=False))
         except Exception as exc:
-            print(json.dumps({'error': type(exc).__name__, 'message': str(exc)}, ensure_ascii=False))
+            print(json.dumps({'error': getattr(exc, 'kind', type(exc).__name__), 'message': str(exc)}, ensure_ascii=False))
             sys.exit(1)

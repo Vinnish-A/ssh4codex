@@ -120,16 +120,6 @@ def test_partial_read_reply_with_zero_exit_retries(client, monkeypatch):
     assert len(calls)==2 and calls[1]['fresh']
 
 
-def test_upload_lost_response_is_not_replayed(client, monkeypatch, tmp_path):
-    source=tmp_path/'upload';source.write_bytes(b'data')
-    calls=[]
-    def interrupted(*a, **k):
-        calls.append(k)
-        return subprocess.CompletedProcess(a,255,b'',b'Connection reset by peer')
-    monkeypatch.setattr(subprocess,'run',interrupted)
-    with pytest.raises(SSHError) as exc:client.put(source,'/remote/upload')
-    assert exc.value.kind=='transfer_unknown' and len(calls)==1
-
 
 def test_config_not_shell_expanded(client):
     argv = client.ssh_argv('echo hello')

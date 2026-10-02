@@ -1,5 +1,4 @@
 """OpenSSH transport and task API. Private keys remain under OpenSSH control."""
-import base64
 import fcntl
 import hashlib
 import json
@@ -14,14 +13,16 @@ import tarfile
 import tempfile
 import threading
 import uuid
+import time
 
 from . import remote
 
 
 class SSHError(RuntimeError):
-    def __init__(self, kind, message, task_id=None):
+    def __init__(self, kind, message, task_id=None, **details):
         super().__init__(message)
         self.kind, self.task_id = kind, task_id
+        self.details = details
 
 
 def config_path():
@@ -76,19 +77,24 @@ def transport_env():
 
 
 def compact(state):
-    fields = ['task_id', 'state', 'exit_code', 'session', 'pane', 'reused', 'error', 'artifacts', 'stdout', 'stderr', 'cancel_requested']
+    fields = ['task_id', 'state', 'exit_code', 'session', 'pane', 'reused', 'error', 'message', 'artifacts', 'stdout', 'stderr', 'cancel_requested']
     return {k: state[k] for k in fields if k in state}
 
 
 class Client:
-    def __init__(self, server_name):
+    def __init__(self, server_name, *, fresh_connection=False, rpc_timeout=None, transfer_timeout=None):
         self.name = server_name
-        self.server = load_server(server_name)
+        self.server = dict(load_server(server_name))
+        transport_hash = hashlib.sha256(json.dumps(self.server, sort_keys=True).encode()).hexdigest()[:16]
+        self.fresh_connection = fresh_connection
+        for key, value in (("rpc_timeout", rpc_timeout), ("transfer_timeout", transfer_timeout)):
+            if value is not None:
+                if value <= 0: raise ValueError(key + " must be positive")
+                self.server[key] = value
         root = Path(os.environ.get('SSH4CODEX_STATE', '~/.local/state/ssh4codex')).expanduser()
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
         root.chmod(0o700)
         self.local = root
-        transport_hash = hashlib.sha256(json.dumps(self.server, sort_keys=True).encode()).hexdigest()[:16]
         self.tmux_target = root / (transport_hash + '.tmux')
         # Short, private socket directory avoids Unix socket path-length failures.
         sockets = Path.home() / '.ssh/ssh4codex'
@@ -113,7 +119,7 @@ class Client:
         self.source = source
 
     def ssh_argv(self, command, fresh=False):
-        bypass = ['-o', 'ControlPath=none', '-o', 'ControlMaster=no'] if fresh else []
+        bypass = ['-o', 'ControlPath=none', '-o', 'ControlMaster=no'] if fresh or self.fresh_connection else []
         return [ssh_program(), *bypass, *self.options, self.server['target'], command]
 
     def connect(self, session=None):
@@ -147,7 +153,7 @@ class Client:
             raise SSHError('submission_unknown' if uncertain_task else 'transport_timeout',
                            'SSH response timed out; remote task may still be running. Query status; do not resubmit with a new id.', uncertain_task) from exc
         if result.returncode == 255:
-            message = result.stderr.decode(errors='replace').strip()
+            message = result.stderr.decode(errors='replace').strip() or 'SSH exited with status 255 without diagnostics'
             if 'Permission denied' in message or 'authentication' in message:
                 kind = 'authentication'
             elif 'Host key verification failed' in message or 'REMOTE HOST IDENTIFICATION' in message:
@@ -182,7 +188,7 @@ class Client:
         payload = json.dumps({'action': action, **args}).encode()
         timeout = self.server.get('rpc_timeout', 10) + args.get('wait_seconds', 0)
         uncertain = args.get('task_id') if action == 'submit' else None
-        observation = action in {'status', 'status_many', 'wait', 'list', 'doctor'}
+        observation = action in {'status', 'status_many', 'wait', 'list', 'doctor', 'upload_status', 'upload_prepare'}
         for attempt in range(2 if observation else 1):
             budget = timeout + (self.server.get('connect_timeout', 8) if attempt else 0)
             try:
@@ -208,34 +214,119 @@ class Client:
                 raise SSHError('submission_unknown' if uncertain else 'protocol',
                                'Remote helper did not return complete JSON: ' + result.stderr.decode(errors='replace')[:1000], uncertain) from exc
             if result.returncode:
-                raise SSHError('remote', value.get('message', str(value)), args.get('task_id'))
+                raise SSHError(value.get('error', 'remote'), value.get('message', str(value)), args.get('task_id'))
             return value
 
-    def submit(self, script, cwd=None, env=None, interpreter=None, artifacts=None, timeout=None, task_id=None, wait_seconds=0, limit=2048):
+    def profile(self, name=None):
+        if name is None:
+            return {}
+        profiles = self.server.get('profiles', {})
+        if name not in profiles:
+            raise SSHError('configuration', 'Unknown execution profile: ' + name)
+        return profiles[name]
+
+    def endpoint(self):
+        # Timeouts/cwd/profile edits must not invalidate recovery. Host changes must.
+        return {key: self.server.get(key) for key in ('target', 'port', 'identity_file', 'ssh_config')}
+
+    def submit(self, script, cwd=None, env=None, interpreter=None, artifacts=None, timeout=None,
+               task_id=None, wait_seconds=0, limit=2048, inputs=None, requires=None, profile=None):
+        if not 0 <= wait_seconds <= 60: raise ValueError('wait_seconds must be 0..60')
         task_id = task_id or uuid.uuid4().hex
-        remote.job_dir(task_id)  # Validate without creating any local remote-state paths.
-        spec = dict(task_id=task_id, script=script, cwd=cwd or self.server.get('cwd', '.'),
-                    env=env or {}, interpreter=interpreter or ['bash'], artifacts=artifacts or [],
+        remote.job_dir(task_id)
+        defaults = self.profile(profile)
+        spec = dict(task_id=task_id, script=script, cwd=cwd or defaults.get('cwd') or self.server.get('cwd', '.'),
+                    env={**defaults.get('env', {}), **(env or {})},
+                    interpreter=interpreter or defaults.get('interpreter') or ['bash'], artifacts=artifacts or [],
                     timeout=timeout, session=self.server['session'])
-        # Persist identity before network mutation: recover even if the response is lost.
+        required = list(dict.fromkeys([*defaults.get('requires', []), *(requires or [])]))
+        if required: spec['requires'] = required
         path = self.local / ('task-' + task_id + '.json')
-        record = {'server': self.name, 'task_id': task_id}
         with (self.local / ('task-' + task_id + '.lock')).open('a') as lock:
             os.chmod(lock.name, 0o600)
             fcntl.flock(lock, fcntl.LOCK_EX)
-            if path.exists():
-                if json.loads(path.read_text()) != record:
-                    raise SSHError('configuration', 'task_id already registered to another server')
-            else:
-                fd, temporary = tempfile.mkstemp(dir=self.local)
-                try:
-                    with os.fdopen(fd, 'w') as handle:
-                        json.dump(record, handle)
-                    os.replace(temporary, path)
-                finally:
-                    Path(temporary).unlink(missing_ok=True)
-        if not 0 <= wait_seconds <= 60: raise ValueError('wait_seconds must be 0..60')
+            previous = json.loads(path.read_text()) if path.exists() else {}
+            if previous and (previous['server'] != self.name or previous.get('endpoint', self.endpoint()) != self.endpoint()):
+                raise SSHError('configuration', 'task_id already registered to another server endpoint', task_id)
+            recorded = previous.get('request')
+            if recorded and {k: v for k, v in recorded.items() if k != 'inputs'} != spec:
+                raise SSHError('request_conflict', 'task_id already records a different request', task_id)
+            fingerprints = []
+            for source, destination in sorted((inputs or {}).items()):
+                if not destination.startswith(('/', '~/')):
+                    raise ValueError('Input destinations must be absolute or start with ~/')
+                local_source = Path(source).expanduser()
+                fingerprints.append({'destination': destination, 'size': local_source.stat().st_size,
+                                     'sha256': remote.file_digest(local_source)})
+            if recorded and previous.get('input_fingerprints', []) != fingerprints:
+                raise SSHError('request_conflict', 'task_id already records different input content', task_id)
+            # Keep the per-task lock across staging: a conflicting retry cannot overwrite inputs.
+            # A failed upload never produces a runnable saved request.
+            if inputs:
+                staged = []
+                for (source, destination), expected in zip(sorted(inputs.items()), fingerprints):
+                    item = self.put(source, destination)
+                    if item['size'] != expected['size'] or item['sha256'] != expected['sha256']:
+                        raise SSHError('transfer_integrity', 'Input changed while being staged', task_id)
+                    staged.append({k: item[k] for k in ('path', 'size', 'sha256')})
+                spec['inputs'] = staged
+            record = {'server': self.name, 'task_id': task_id, 'endpoint': self.endpoint(), 'request': spec}
+            if fingerprints: record['input_fingerprints'] = fingerprints
+            if recorded and previous != record:
+                raise SSHError('request_conflict', 'task_id already records a different request', task_id)
+            self.save_private(path, record)
         return compact(self.rpc('submit', **spec, wait_seconds=wait_seconds, limit=limit))
+
+    def save_private(self, path, value):
+        fd, temporary = tempfile.mkstemp(dir=self.local)
+        try:
+            with os.fdopen(fd, 'w') as handle:
+                json.dump(value, handle)
+            os.replace(temporary, path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
+
+    def recover(self, task_id, retry=False, limit=2048):
+        remote.job_dir(task_id)
+        path = self.local / ('task-' + task_id + '.json')
+        record = json.loads(path.read_text()) if path.exists() else None
+        if record and (record['server'] != self.name or
+                       record.get('endpoint', self.endpoint()) != self.endpoint()):
+            raise SSHError('configuration', 'Task is registered to a different server endpoint', task_id)
+        # A new instance avoids changing a concurrently used client's connection mode.
+        client = Client(self.name, fresh_connection=True, rpc_timeout=self.server.get('rpc_timeout'),
+                        transfer_timeout=self.server.get('transfer_timeout'))
+        try:
+            return client.status(task_id, limit=limit, tail=True)
+        except SSHError as exc:
+            if exc.kind != 'task_not_found': raise
+        if not retry:
+            return {'task_id': task_id, 'state': 'not_found', 'retry_available': bool(record and record.get('request')),
+                    'next_action': 'recover with retry=True to replay the saved request under the same task_id'}
+        if not record or not record.get('request'):
+            raise SSHError('request_unavailable', 'No saved request; cannot reconstruct or replay this task', task_id)
+        return compact(client.rpc('submit', **record['request'], wait_seconds=0, limit=limit))
+
+    def poll(self, task_id, consumer, limit=2048, reset=False):
+        remote.job_dir(task_id)
+        if not isinstance(consumer, str) or not consumer.strip():
+            raise ValueError('A nonempty consumer name is required')
+        key = hashlib.sha256(json.dumps([self.endpoint(), task_id, consumer], sort_keys=True).encode()).hexdigest()
+        path = self.local / ('cursor-' + key + '.json')
+        with (self.local / ('cursor-' + key + '.lock')).open('a') as lock:
+            os.chmod(lock.name, 0o600)
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            cursor = json.loads(path.read_text()) if path.exists() and not reset else {}
+            value = self.status(task_id, cursor.get('stdout', 0), cursor.get('stderr', 0), limit)
+            self.save_private(path, {name: value[name]['cursor'] for name in ('stdout', 'stderr')})
+            return value
+
+    def doctor(self, requires=None, cwd=None, env=None, profile=None):
+        defaults = self.profile(profile)
+        return self.rpc('doctor', cwd=cwd or defaults.get('cwd') or self.server.get('cwd', '.'),
+                        env={**defaults.get('env', {}), **(env or {})},
+                        requires=list(dict.fromkeys([*defaults.get('requires', []), *(requires or []),
+                                                     *(defaults.get('interpreter', [])[:1])])))
 
     def status(self, task_id, stdout_cursor=0, stderr_cursor=0, limit=2048, tail=False, logs=True):
         return compact(self.rpc('status', task_id=task_id, stdout_cursor=stdout_cursor,
@@ -257,47 +348,70 @@ class Client:
     def cancel(self, task_id):
         return compact(self.rpc('cancel', task_id=task_id))
 
-    def put(self, source, destination, mode=0o600):
+    def transfer_status(self, transfer_id):
+        return self.rpc('upload_status', transfer_id=transfer_id)
+
+    def put(self, source, destination, mode=0o600, retries=2, progress=None):
+        """Resume an identical transfer, verify its prefix and commit only a complete hash."""
         source = Path(source).expanduser()
-        digest = hashlib.sha256()
-        with source.open('rb') as handle:
-            for chunk in iter(lambda: handle.read(1024 * 1024), b''):
-                digest.update(chunk)
-        expected = digest.hexdigest()
-        encoded = base64.b64encode(destination.encode()).decode()
-        # Python 3.10 on the remote: stream hashing rather than file_digest (3.11+).
-        code = "\n".join([
-            "import base64,pathlib,sys,tempfile,os,hashlib,json",
-            "p=pathlib.Path(base64.b64decode('" + encoded + "').decode()).expanduser()",
-            "p.parent.mkdir(parents=True,exist_ok=True)",
-            "fd,t=tempfile.mkstemp(prefix='.ssh4codex-',dir=p.parent)",
-            "try:",
-            " h=hashlib.sha256()",
-            " with os.fdopen(fd,'wb') as f:",
-            "  for chunk in iter(lambda: sys.stdin.buffer.read(1048576),b''):",
-            "   h.update(chunk); f.write(chunk)",
-            " if h.hexdigest() != '" + expected + "': raise ValueError('Upload checksum mismatch')",
-            " os.chmod(t," + str(mode) + "); os.replace(t,p)",
-            " print(json.dumps({'path':str(p.resolve()),'size':p.stat().st_size,'sha256':h.hexdigest()}))",
-            "finally:",
-            " if os.path.exists(t): os.unlink(t)",
-        ])
-        with source.open('rb') as handle:
+        if not isinstance(retries, int) or not 0 <= retries <= 5:
+            raise ValueError('retries must be 0..5')
+        if not isinstance(mode, int) or not 0 <= mode <= 0o777:
+            raise ValueError('mode must be an octal permission value up to 0777')
+        size, expected = source.stat().st_size, remote.file_digest(source)
+        identity = [self.endpoint(), destination, size, expected, mode]
+        transfer_id = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:32]
+        spec = dict(transfer_id=transfer_id, destination=destination, size=size, sha256=expected, mode=mode)
+        if progress: progress({'transfer_id': transfer_id, 'phase': 'preparing', 'size': size})
+        last_message = 'Transfer did not complete'
+        resumed_from = 0
+        for attempt in range(retries + 1):
             try:
-                proc = subprocess.run(self.ssh_argv('python3 -c ' + shlex.quote(code)),
-                                      stdin=handle, capture_output=True, timeout=self.server.get('transfer_timeout', 300), env=transport_env())
-            except subprocess.TimeoutExpired as exc:
-                raise SSHError('transfer_unknown', 'Upload response timed out; inspect destination before retrying') from exc
-        if proc.returncode:
-            message = proc.stderr.decode(errors='replace')
-            if proc.returncode == 255:
-                if 'Permission denied' in message:
-                    raise SSHError('authentication', message)
-                if 'Host key verification failed' in message or 'REMOTE HOST IDENTIFICATION' in message:
-                    raise SSHError('host_key', message)
-                raise SSHError('transfer_unknown', 'Upload response lost; verify destination before retrying: ' + message)
-            raise SSHError('transfer', message)
-        return json.loads(proc.stdout)
+                ready = self.rpc('upload_prepare', **spec)
+                if progress: progress({k: ready[k] for k in ('transfer_id', 'phase', 'bytes_received', 'size')})
+                if ready['phase'] == 'complete':
+                    return {**ready, 'attempts': attempt, 'resumed_from': resumed_from}
+                offset = ready['offset']
+                resumed_from = max(resumed_from, offset)
+                if source.stat().st_size != size or remote.file_digest(source, offset) != ready['prefix_sha256']:
+                    raise SSHError('transfer_integrity', 'Source changed or remote partial upload has a different prefix')
+                command = 'python3 ' + shlex.quote(self.agent_relative) + ' upload ' + transfer_id + ' ' + str(offset)
+                # Dedicated connection: a large stream must not monopolize the shared control master.
+                with source.open('rb') as handle:
+                    handle.seek(offset)
+                    proc = subprocess.run(self.ssh_argv(command, fresh=True), stdin=handle, capture_output=True,
+                                          timeout=self.server.get('transfer_timeout', 300), env=transport_env())
+                if proc.returncode == 255:
+                    message = proc.stderr.decode(errors='replace').strip() or 'SSH upload exited 255 without diagnostics'
+                    if 'Permission denied' in message: raise SSHError('authentication', message)
+                    if 'Host key verification failed' in message or 'REMOTE HOST IDENTIFICATION' in message:
+                        raise SSHError('host_key', message)
+                    raise SSHError('transfer_unknown', message)
+                try:
+                    value = json.loads(proc.stdout)
+                except json.JSONDecodeError as exc:
+                    raise SSHError('transfer_unknown', 'Upload acknowledgement missing or incomplete; saved transfer can be resumed') from exc
+                if proc.returncode:
+                    raise SSHError(value.get('error', 'transfer'), value.get('message', 'Upload failed'))
+                return {**value, 'attempts': attempt + 1, 'resumed_from': resumed_from}
+            except subprocess.TimeoutExpired:
+                last_message = 'Upload response timed out; remote partial data is retained'
+            except SSHError as exc:
+                if exc.kind not in {'transfer_unknown', 'transfer_busy', 'transfer_incomplete', 'transport', 'transport_timeout'}:
+                    exc.details.update(transfer_id=transfer_id, resumed_from=resumed_from)
+                    raise
+                last_message = str(exc)
+            if attempt < retries:
+                time.sleep(min(0.5 * (attempt + 1), 1))
+        # Lost final acknowledgement may still mean a successful atomic commit.
+        try:
+            value = self.rpc('upload_prepare', **spec)
+            if value['phase'] == 'complete':
+                return {**value, 'attempts': retries + 1, 'resumed_from': resumed_from}
+        except SSHError:
+            pass
+        raise SSHError('transfer_unknown', last_message + '; rerun the same put to resume',
+                       transfer_id=transfer_id, resumed_from=resumed_from, attempts=retries + 1)
 
     def fetch(self, task_id, destination):
         remote.job_dir(task_id)

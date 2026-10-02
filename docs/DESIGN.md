@@ -14,6 +14,13 @@ worker 使用独立子进程组、单独 stdout/stderr、运行超时和取消�
 
 本地故障分类：configuration、authentication、host_key、transport、transport_timeout、submission_unknown、protocol、setup、remote、artifact_not_ready、artifact_missing、artifact_changed、artifact_collision、transfer、transfer_unknown。错误也返回 task_id（如果已知）。正常运行不打印凭据，保留 OpenSSH 的主机密钥检查。
 
-只读 RPC 和下载在网络故障后最多重试一次，并绕过失效 master；提交和上传不自动重放。无完整提交 JSON 时保留 submission_unknown/task_id。本地任务归属使用锁与原子记录，防止跨进程重试读取半份 JSON。status_many 复用一次 tmux pane 扫描；默认不返回日志。SSH 压缩默认开启，可按服务器关闭。
+只读 RPC 和下载在网络故障后最多重试一次，并绕过失效 master；提交不自动重放；上传按持久 transfer_id 核验前缀后有界续传。无完整提交 JSON 时保留 submission_unknown/task_id。本地任务归属使用锁与原子记录，防止跨进程重试读取半份 JSON。status_many 复用一次 tmux pane 扫描；默认不返回日志。SSH 压缩默认开启，可按服务器关闭。
 
 连接定义仅从仓库外的用户配置读取，必须包含 SSH 目标和 tmux 会话；运行时不包含服务器目录或部署模板。真实验收报告、认证记录和临时测试缓存保存于外部私有目录，不进入发布包。
+
+
+恢复请求保存于本地私有 task 记录；recover 先通过独立连接读取状态，仅在明确 task_not_found 且用户指定 retry 时重发原请求。新增 inputs/requires 字段仅在非空时参与指纹，保留旧版普通任务的指纹兼容性。输入先完成上传，远端创建窗口前再次核对文件和环境；调用者仍负责防止任务开始后输入被改动。
+
+上传分为 prepare、独立流和 status。transfer_id 由端点、目标路径、大小、SHA256、权限确定。prepare 返回持久部分文件的大小与前缀哈希；流从确认的偏移继续写入，完成后核对完整哈希和目标最初指纹，再原子替换。传输锁防止同 ID 并发写入，目标锁串行化多个连接器传输的提交；外部程序并不遵守此锁，不能将此机制视作跨所有程序的事务隔离。回执丢失后先查询 / prepare，已完成则直接返回。
+
+新增错误包括 task_not_found、request_conflict、request_unavailable、preflight_failed、transfer_busy、transfer_conflict、transfer_integrity、transfer_incomplete、transfer_not_found。上传错误包含 transfer_id 和有限重试信息；非空诊断替代 SSH 返回空 stderr 的情况。保留的请求、部分文件和日志均为私有运行状态。

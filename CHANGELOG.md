@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.4.0 — 2026-10-02
+
+- Removed the bundled server catalog and deployment templates. Connections now require an external profile with an explicit SSH target and tmux session.
+- Kept installation and releases independent of private configuration, authentication records and raw test reports; live tests take explicit server parameters and save reports outside the repository.
+
 ## 0.3.0 — 2026-10-02
 
 - Added interactive `connect SERVER [--session NAME]` to open SSH directly into tmux, remembering the most recently selected target across client restarts and connection loss. First use defaults to the configured session; missing sessions are created without detaching existing clients.
@@ -23,7 +28,7 @@
 
 - Added task-oriented CLI and seven official-SDK MCP tools using OpenSSH multiplexing and remote tmux, with durable task IDs, same-request deduplication, explicit states, incremental bounded logs, cancellation and timeout.
 - Added streaming uploads and completion-gated artifact retrieval with SHA256 verification and atomic per-file replacement; preserve unknown submission state without replaying side effects.
-- Validated on solvinglab with unit, real-server and stdio MCP tests; recorded scoped latency and returned-output token measurements.
+- Validated on a configured remote host with unit, real-server and stdio MCP tests; recorded scoped latency and returned-output token measurements.
 - Added a standalone Linux x86_64 / WSL release containing Python, the MCP SDK and OpenSSH, with SHA256-checked installation, versioned directories and tag-triggered GitHub Releases.
-- Added the public server catalog, existing-key discovery, passwordless-deployment records and detailed agent instructions; exclude credentials and private runtime data from source and release artifacts.
+- Added the connection setup and local authentication support and detailed agent instructions; exclude credentials and private runtime data from source and release artifacts.
 - Isolated MCP stdio handles so SDK shutdown cannot close the frozen runtime’s process output.

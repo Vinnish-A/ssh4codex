@@ -1,9 +1,11 @@
 """Opt-in real interruption after artifact bytes have reached local staging."""
 from concurrent.futures import ThreadPoolExecutor
+import argparse
 import hashlib
 import json
 import os
 from pathlib import Path
+from live_support import PRIVATE_ROOT, REPORTS, write_report
 import subprocess
 import time
 import uuid
@@ -13,10 +15,13 @@ from ssh4codex.client import Client,load_server
 
 
 def main():
-    base=load_server('solvinglab')
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--server', required=True)
+    args=parser.parse_args()
+    base=load_server(args.server)
     token=uuid.uuid4().hex[:12]
-    local=Path('.local/stress')/('stream-'+token);local.mkdir(parents=True)
-    direct=Client('solvinglab')
+    local=PRIVATE_ROOT/'stress'/('stream-'+token);local.mkdir(parents=True)
+    direct=Client(args.server)
     script="python3 - <<'INNER'\nfrom pathlib import Path\nimport os\nPath('random.bin').write_bytes(os.urandom(2*1024*1024))\nINNER"
     work='/tmp/ssh4codex-stream-'+token
     direct.submit('mkdir -p '+work,cwd='/tmp',wait_seconds=3)
@@ -56,7 +61,7 @@ def main():
         report={'passed':True,'bytes':original['size'],'entropy':'os.urandom; incompressible',
                 'dropped_after_local_bytes':partial,'recovered_sha256':True,
                 'elapsed_s':round(time.monotonic()-start,3),'no_partial_files':True}
-        Path('benchmarks/stream_drop.json').write_text(json.dumps(report,indent=2));print(json.dumps(report),flush=True)
+        write_report("stream_drop.json",report);print(json.dumps(report),flush=True)
     finally:
         subprocess.run(['ssh',*client.options,'-O','exit',client.server['target']],capture_output=True,timeout=10)
         proxy.close()

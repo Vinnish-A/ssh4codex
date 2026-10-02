@@ -21,7 +21,11 @@ async def check(package):
             return subprocess.run([executable, *args], env=env, capture_output=True,
                                   text=True, check=True, timeout=30).stdout
         assert run('--version').strip().endswith((package / 'VERSION').read_text().strip())
-        assert 'solvinglab' in json.loads(run('catalog'))['servers']
+        unknown = subprocess.run([executable, 'doctor', 'unconfigured-smoke-server'], env=env,
+                                 capture_output=True, text=True, timeout=10)
+        assert unknown.returncode == 2
+        assert json.loads(unknown.stdout)['error'] == 'configuration'
+        assert not list(package.rglob('catalog.json'))
         assert 'run' in run('--help')
         assert '--session' in run('connect', '--help')
         ssh = subprocess.run([str(package / 'tools/ssh'), '-V'], env=env,

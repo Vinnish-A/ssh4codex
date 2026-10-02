@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ssh4codex"
-version = "0.3.0"
+version = "0.4.0"
 description = "Task-oriented SSH and tmux execution for coding agents"
 requires-python = ">=3.10"
 license = "MIT"
@@ -19,7 +19,7 @@ ssh4codex = "ssh4codex.cli:main"
 ssh4codex-mcp = "ssh4codex.mcp_server:main"
 
 [tool.setuptools.package-data]
-ssh4codex = ["catalog.json", "remote.py"]
+ssh4codex = ["remote.py"]
 
 [tool.setuptools.packages.find]
 include = ["ssh4codex*"]

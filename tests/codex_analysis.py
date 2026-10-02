@@ -1,8 +1,8 @@
 """Opt-in synthetic analysis via the installed release CLI; not pytest-collected.
 
 Run: python3 tests/codex_analysis.py --run
-Inputs, scripts and fetched outputs remain in ignored .local/workflows/analysis.
-Only compact public-safe measurements are written to benchmarks/.
+Inputs, scripts and fetched outputs remain in external private test storage.
+Full measurements remain in external private storage.
 """
 import argparse
 import csv
@@ -10,6 +10,8 @@ import hashlib
 import json
 import math
 from pathlib import Path
+from live_support import PRIVATE_ROOT, REPORTS, write_report
+from ssh4codex.client import load_server
 import random
 import shlex
 import statistics
@@ -19,7 +21,6 @@ import uuid
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RSCRIPT = "/mnt/sdb/xzh/miniconda3/envs/tidy/bin/Rscript"
 SEED = 20261002
 
 ANALYSIS_R = r'''
@@ -87,14 +88,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", action="store_true", help="Explicitly authorize the remote synthetic workflow")
     parser.add_argument("--cli", default=str(Path.home()/".local/bin/ssh4codex"))
-    parser.add_argument("--server", default="solvinglab")
+    parser.add_argument("--server", required=True)
     parser.add_argument("--remote-root", help="Isolated remote analysis directory")
+    parser.add_argument("--rscript", required=True, help="Remote Rscript executable")
     args = parser.parse_args()
+    RSCRIPT = args.rscript
+    expected_session = load_server(args.server)["session"]
     if not args.run:
         parser.error("Pass --run to execute the remote synthetic workflow")
     run_id = uuid.uuid4().hex[:12]
     remote = args.remote_root or f"/tmp/ssh4codex-codex-{run_id}/analysis"
-    local = ROOT/".local/workflows/analysis"/run_id
+    local = PRIVATE_ROOT/"workflows/analysis"/run_id
     local.mkdir(parents=True)
     downloaded = local/"downloaded"
     started = time.perf_counter()
@@ -119,13 +123,13 @@ def main():
         while result["state"] in {"queued", "running"}:
             result = cli("wait", args.server, result["task_id"], "--seconds", "20", "--limit", "1024")
         assert result["state"] == "succeeded" and result["exit_code"] == 0
-        assert result["session"] == "data"
+        assert result["session"] == expected_session
         return result
 
     def run_task(label, script, artifacts=(), parent=None):
         tid = f"codex-analysis-{label}-{run_id}"
         before = time.perf_counter()
-        argv = ["run", args.server, "--task-id", tid, "--cwd", remote,
+        argv = ["run", args.server, "--task-id", tid, "--cwd", "/tmp" if label == "prepare" else remote,
                 "--wait", "2", "--timeout", "120", "--limit", "1024"]
         if isinstance(script, Path):
             argv += ["--script", str(script), "--interpreter", RSCRIPT,
@@ -218,7 +222,7 @@ def main():
     assert (downloaded/"differential.pdf").read_bytes()[:5] == b"%PDF-"
     report = {
         "scenario": "installed-release synthetic analysis and dependent plotting",
-        "cli_version": version, "server_alias": args.server, "tmux_session": "data", "seed": SEED,
+        "cli_version": version, "server_alias": args.server, "tmux_session": expected_session, "seed": SEED,
         "synthetic_dimensions": {"genes": 300, "samples": 12, "control": 6, "case": 6},
         "ground_truth": {"up": 20, "down": 20, "unchanged": 260, "effect_log2": 3},
         "checks": {"upload_sha256": True, "artifact_sha256_and_size": True,
@@ -233,7 +237,7 @@ def main():
         "remote_analysis_directory": remote,
         "requests": requests, "tasks": tasks, "uploads": uploads, "artifacts": artifacts,
     }
-    (ROOT/"benchmarks/codex_analysis.json").write_text(json.dumps(report, indent=2)+"\n")
+    write_report("codex_analysis.json", report)
     print(json.dumps({"all_passed": True, "elapsed_seconds": report["elapsed_seconds"],
                       "subprocess_requests": len(requests), "returned_output_bytes": report["returned_output_bytes"],
                       "local_outputs": str(local), "plot": str(downloaded/"differential.png")}))

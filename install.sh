@@ -59,5 +59,5 @@ for program in ssh4codex ssh4codex-mcp; do
   rmdir "$links"
 done
 printf 'Installed ssh4codex %s to %s\n' "$version" "$bin_dir"
-printf 'Run: %s/ssh4codex catalog\n' "$bin_dir"
+printf 'Usage: %s/ssh4codex --help\n' "$bin_dir"
 case ":$PATH:" in *":$bin_dir:"*) ;; *) printf 'Add %s to PATH, or use the full command path.\n' "$bin_dir";; esac

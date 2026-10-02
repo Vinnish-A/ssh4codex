@@ -14,6 +14,7 @@ benchmarks/downloads/
 benchmarks/upload.bin
 benchmarks/key_transfer.json
 benchmarks/output_samples.json
+benchmarks/*.json
 *.pem
 *.key
 id_rsa*

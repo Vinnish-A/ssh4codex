@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import sys
 
-from .client import Client, SSHError, config_path, server_catalog, ssh_program, transport_env
+from .client import Client, SSHError, config_path, ssh_program, transport_env
 from . import __version__
 
 
@@ -15,7 +15,7 @@ def parser():
     add.add_argument('server'); add.add_argument('--target', required=True)
     add.add_argument('--port', type=int)
     add.add_argument('--cwd', default='.')
-    add.add_argument('--session', default='ssh4codex')
+    add.add_argument('--session', required=True)
     add.add_argument('--identity-file'); add.add_argument('--control-path'); add.add_argument('--ssh-config')
     add.add_argument('--connect-timeout', type=int); add.add_argument('--rpc-timeout', type=float)
     add.add_argument('--transfer-timeout', type=float)
@@ -50,7 +50,6 @@ def parser():
     put = sub.add_parser('put', help='Upload a local file atomically with SHA256 verification')
     put.add_argument('server'); put.add_argument('source'); put.add_argument('destination')
     put.add_argument('--mode', type=lambda v: int(v, 8), default=0o600)
-    sub.add_parser('catalog', help='List recorded server aliases and verified key deployment metadata')
     sub.add_parser('mcp', help='Serve the same API using the optional official MCP SDK')
     return p
 
@@ -61,9 +60,7 @@ def main(argv=None):
         if args.action == 'mcp':
             from .mcp_server import main as serve
             serve(); return
-        if args.action == 'catalog':
-            value = {'servers': server_catalog()}
-        elif args.action == 'add':
+        if args.action == 'add':
             path = config_path(); path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             config = json.loads(path.read_text()) if path.exists() else {'servers': {}}
             config['servers'][args.server] = {k: v for k, v in vars(args).items() if k not in {'action', 'server'} and v is not None}

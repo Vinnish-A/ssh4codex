@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from live_support import PRIVATE_ROOT, REPORTS, write_report
 import subprocess
 import time
 import uuid
@@ -18,17 +19,18 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--run', action='store_true', help='Run synthetic tasks on the configured remote server')
+    parser.add_argument('--server', required=True)
     parser.add_argument('--remote-root', default='/tmp')
-    parser.add_argument('--output', type=Path, default=Path('benchmarks/codex_network.json'))
+    parser.add_argument('--output', type=Path, default=REPORTS/'codex_network.json')
     parser.add_argument('--binary', type=Path, default=Path.home()/'.local/bin/ssh4codex')
     args = parser.parse_args()
     if not args.run:
         parser.error('Opt-in required: pass --run to contact the remote server')
     start = time.monotonic()
     token = uuid.uuid4().hex[:12]
-    local = ROOT/'.local/workflows/network'/token
+    local = PRIVATE_ROOT/'workflows/network'/token
     local.mkdir(parents=True)
-    base = load_server('solvinglab')
+    base = load_server(args.server)
     host = base['target'].split('@')[-1]
     proxy = NetworkProxy(host,base.get('port',22))
     ssh_config = local/'ssh_config'
@@ -55,7 +57,7 @@ def main():
         return result.returncode,value
     version=subprocess.run([str(args.binary),'--version'],capture_output=True,text=True,check=True,timeout=10).stdout.strip().split()[-1]
     report = {'scenario':'standalone analysis under lost acknowledgement, reconnect and agent restart',
-              'runtime':version,'run_id':token,'shared_session':'data','checks':{}}
+              'runtime':version,'run_id':token,'shared_session':base['session'],'checks':{}}
     work = args.remote_root.rstrip('/')+'/network-'+token
     try:
         for server in ['direct','network']:
@@ -125,6 +127,7 @@ print('analysis complete',flush=True)
                       operation_metrics=requests,files=len(files),analysis_rows=len(values))
         args.output.parent.mkdir(parents=True,exist_ok=True)
         args.output.write_text(json.dumps(report,indent=2))
+        args.output.chmod(0o600)
         print(json.dumps({k:v for k,v in report.items() if k not in {'operation_metrics','remote_artifact_paths'}}))
     finally:
         # Release only these dedicated test masters, not the agents' shared connection.

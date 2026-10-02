@@ -14,4 +14,4 @@ PyInstaller onedir 含 Python/MCP；tools/ 包含 OpenSSH 和非 glibc 动态库
 
 在 main 上提交并推送同版本 vX.Y.Z 标签，GitHub Actions 执行单元/离线运行时测试，构建 Release 并上传包与校验文件。发布前真实 SSH/MCP/产物测试由维护者进行，CI 不接触真实私钥。
 
-`tests/release.py` 将客户端 PATH 设为 `/nonexistent`，验证版本、内置服务器目录、内置 SSH、stdio MCP 初始化/工具发现/配置错误和正常 EOF 退出。依赖使用已锁定的 pydantic-settings 2.12.0，避免更新版本针对 MCP 泛型 lifespan 注解的无关初始化警告。
+`tests/release.py` 将客户端 PATH 设为 `/nonexistent`，验证版本、无内置部署配置、内置 SSH、stdio MCP 初始化/工具发现/配置错误和正常 EOF 退出。依赖使用已锁定的 pydantic-settings 2.12.0，避免更新版本针对 MCP 泛型 lifespan 注解的无关初始化警告。

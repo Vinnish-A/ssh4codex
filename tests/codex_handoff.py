@@ -1,7 +1,7 @@
 """Opt-in live CLI handoff and cross-process durable submission simulation.
 
 Run: python3 tests/codex_handoff.py --run
-Only metadata enters benchmarks; raw responses and artifacts remain in .local/.
+Measurements, raw responses and artifacts remain in external private storage.
 """
 import argparse
 from datetime import datetime, timezone
@@ -9,6 +9,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from live_support import PRIVATE_ROOT, REPORTS, write_report
+from ssh4codex.client import load_server
 import shlex
 import subprocess
 import sys
@@ -81,7 +83,7 @@ def worker(context_path, role):
         response = submitted(requests, context, prefix + '-producer',
                              Path(context['producer_script']), ['numbers.json'])
         assert response['state'] in {'queued', 'running'}, response
-        assert response['reused'] is False and response['session'] == 'data', response
+        assert response['reused'] is False and response['session'] == context['session'], response
         answer = {'task_id': response['task_id'], 'initial_state': response['state'],
                   'session': response['session'], 'exits_while_remote_active': True}
     elif role == 'consumer':
@@ -91,7 +93,7 @@ def worker(context_path, role):
         assert len(matching) == 1, listing
         task_id = matching[0]['task_id']
         status = requests.call('status', server, task_id)
-        assert status['task_id'] == task_id and status['session'] == 'data', status
+        assert status['task_id'] == task_id and status['session'] == context['session'], status
         completed = requests.call('wait', server, task_id, '--seconds', '15')
         assert completed['state'] == 'succeeded' and completed['exit_code'] == 0, completed
         source = verified_fetch(requests, context, task_id, requests.directory / 'downloads',
@@ -124,7 +126,8 @@ def worker(context_path, role):
 
 def launch(context_path, role):
     return subprocess.Popen([sys.executable, str(Path(__file__).resolve()),
-                             '--worker', role, '--context', str(context_path)],
+                             '--worker', role, '--context', str(context_path),
+                             '--server', json.loads(Path(context_path).read_text())['server']],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
@@ -139,7 +142,7 @@ def finish(process, private, role):
 def main(args):
     started = time.perf_counter()
     run_id = uuid.uuid4().hex[:12]
-    private = ROOT / '.local/workflows/handoff' / run_id
+    private = PRIVATE_ROOT / 'workflows/handoff' / run_id
     private.mkdir(parents=True, mode=0o700)
     private.chmod(0o700)
     config_path = Path(os.environ.get('SSH4CODEX_CONFIG', '~/.config/ssh4codex/config.json')).expanduser()
@@ -148,6 +151,7 @@ def main(args):
     config.chmod(0o600)
     context = {'cli': str(Path(args.cli).expanduser()), 'server': args.server,
                'config': str(config), 'private': str(private), 'prefix': 'handoff-' + run_id,
+               'session': load_server(args.server)['session'],
                'remote_work': args.remote_root.rstrip('/') + '/' + run_id,
                'barrier': str(private / 'submit-now')}
     scripts = {
@@ -192,7 +196,7 @@ INNER
     setup = coordinator.call('run', context['server'], '--command',
                              'mkdir -p ' + shlex.quote(context['remote_work']), '--cwd', '/tmp',
                              '--task-id', context['prefix'] + '-prepare', '--wait', '3')
-    assert setup['state'] == 'succeeded' and setup['session'] == 'data', setup
+    assert setup['state'] == 'succeeded' and setup['session'] == context['session'], setup
     producer = finish(launch(context_path, 'producer'), private, 'producer')
     after_exit = coordinator.call('status', context['server'], producer['task_id'])
     assert after_exit['state'] in {'queued', 'running'}, after_exit
@@ -228,7 +232,7 @@ INNER
     assert conflict['error'] == 'remote' and 'different request' in conflict['message'], conflict
     print('Three independent submitters: exactly one original, two reused; side effect count 1; conflict rejected.', flush=True)
     report = {'schema_version': 1, 'recorded_at': datetime.now(timezone.utc).isoformat(),
-              'cli_version': version, 'server_alias': context['server'], 'session': 'data',
+              'cli_version': version, 'server_alias': context['server'], 'session': context['session'],
               'run_id': run_id, 'all_passed': True,
               'independent_local_state_directories': 6,
               'shared_server_configuration': True,
@@ -255,21 +259,26 @@ INNER
     report['cli_request_count'] = sum(t['request_count'] for t in telemetry)
     report['cli_output_bytes'] = sum(t['output_bytes'] for t in telemetry)
     output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     output.write_text(json.dumps(report, indent=2) + '\n')
+    output.chmod(0o600)
     print(json.dumps({'all_passed': True, 'request_count': report['cli_request_count'],
                       'elapsed_seconds': report['elapsed_seconds'], 'report': str(output)}))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--run', action='store_true')
     parser.add_argument('--cli', default='~/.local/bin/ssh4codex')
-    parser.add_argument('--server', default='solvinglab')
-    parser.add_argument('--remote-root', default='/tmp/ssh4codex-codex-b7ffc0b0cfe1/handoff')
-    parser.add_argument('--output', default=str(ROOT / 'benchmarks/codex_handoff.json'))
+    parser.add_argument('--server', required=True)
+    parser.add_argument('--remote-root', default='/tmp/ssh4codex-workflows/handoff')
+    parser.add_argument('--output', default=str(REPORTS / "codex_handoff.json"))
     parser.add_argument('--worker', choices=['producer', 'consumer', 'race-1', 'race-2', 'race-3'])
     parser.add_argument('--context')
     args = parser.parse_args()
     if args.worker:
         worker(args.context, args.worker)
     else:
+        if not args.run:
+            parser.error('Pass --run to create real remote synthetic tasks')
         main(args)

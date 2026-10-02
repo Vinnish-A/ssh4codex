@@ -1,12 +1,13 @@
 """Opt-in PTY test of direct tmux connection, resumption and shared clients.
 
 Run: .venv/bin/python tests/tmux_connect.py --run
-Uses only dedicated synthetic sessions; terminal transcripts stay in .local/.
+Uses dedicated synthetic sessions and external private terminal transcripts.
 """
 import argparse
 import json
 import os
 from pathlib import Path
+from live_support import PRIVATE_ROOT, REPORTS, write_report
 import pty
 import select
 import shlex
@@ -23,14 +24,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run', action='store_true')
     parser.add_argument('--binary', default=str(ROOT / '.venv/bin/ssh4codex'))
-    parser.add_argument('--server', default='solvinglab')
+    parser.add_argument('--server', required=True)
     args = parser.parse_args()
     if not args.run:
         parser.error('Pass --run to test real remote tmux sessions')
     started = time.monotonic()
     run_id = uuid.uuid4().hex[:10]
     sessions = ['s4c-' + run_id + suffix for suffix in ('-a', '-b')]
-    private = ROOT / '.local/tmux-connect' / run_id
+    private = PRIVATE_ROOT / 'tmux-connect' / run_id
     private.mkdir(parents=True, mode=0o700)
     config = private / 'config.json'
     config.write_text(json.dumps({'servers': {args.server: {
@@ -126,7 +127,7 @@ def main():
                              'detach_preserves_shell_environment': True,
                              'explicit_session_remembered_by_new_process': True},
                   'synthetic_sessions_only': True}
-        (ROOT / 'benchmarks/tmux_connect.json').write_text(json.dumps(report, indent=2) + '\n')
+        write_report("tmux_connect.json", report)
         print(json.dumps(report))
     finally:
         for session in sessions:

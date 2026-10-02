@@ -1,6 +1,6 @@
 # Codex 工作流实测
 
-2026-10-02，在 Solvinglab 的 `tmux data` 中测试已安装的独立 Release。主 Codex 启动了三个真实 subagent：一个分析表达矩阵并绘图，一个调度混合 MCP 任务，一个测试跨进程交接。主 agent 另外注入网络故障，最后独立核验子任务状态，并提交远端汇总任务读取各 agent 的实际产物。
+2026-10-02，在外部配置指定的远端主机和 tmux 会话中测试已安装的独立 Release。主 Codex 启动了三个真实 subagent：一个分析表达矩阵并绘图，一个调度混合 MCP 任务，一个测试跨进程交接。主 agent 另外注入网络故障，最后独立核验子任务状态，并提交远端汇总任务读取各 agent 的实际产物。
 
 远端运行的是 Python / R 脚本，没有调用服务器上的 Codex，也没有通过 `send-keys` 操纵已有交互 pane。所有输入为合成数据，工作目录隔离在 `/tmp/ssh4codex-codex-…/`，没有修改科研项目结果。
 
@@ -32,19 +32,19 @@
 
 根因是下载的 SSH 子进程继承了 MCP 标准输入。SSH 会读取并转发后续 JSON-RPC 请求，导致 MCP 服务端看不到它们。关闭会话时出现的 `ClosedResourceError` 和 SDK 字典迭代异常是清理阶段的错误，不能据此把下载失败归因于网络。
 
-0.2.1 使用 `stdin=DEVNULL` 隔离下载进程输入，保留其它 RPC / 上传需要的输入管道。新增单元回归和全新 MCP 会话的十一路并发下载回归；回归不预加载 `tools/list`，直接触发原故障条件。原失败记录保存在 [中间报告](../benchmarks/codex_multitask_intermediate.json)，没有覆盖为成功。
+0.2.1 使用 `stdin=DEVNULL` 隔离下载进程输入，保留其它 RPC / 上传需要的输入管道。新增单元回归和全新 MCP 会话的十一路并发下载回归；回归不预加载 `tools/list`，直接触发原故障条件。原失败记录保存在外部私有报告目录，没有覆盖为成功。
 
 ## 测量与最终独立核验
 
 | 场景 | 独立程序版本 | 测量耗时 | 结果 / 报告 |
 |---|---|---:|---|
-| R 分析、qs 和依赖绘图 | 0.2.0 | 6.658 秒 | 8 次 CLI 调用，返回 3,833 字节；[报告](../benchmarks/codex_analysis.json) |
-| 跨进程交接及三进程同 ID 竞争 | 0.2.0 | 15.387 秒 | 16 次 CLI 调用，返回 6,262 字节，实际执行一次；[报告](../benchmarks/codex_handoff.json) |
-| 提交确认丢失、换 agent 恢复 | 0.2.0 | 14.854 秒 | 10 次 CLI 调用，返回 5,506 字节，50,000 行计算正确；[报告](../benchmarks/codex_network.json) |
-| 14 个混合 MCP worker | 0.2.1 | 工作负载 27.909 秒；完整测试 38.004 秒 | 预期终态全部匹配；[报告](../benchmarks/codex_multitask.json) |
+| R 分析、qs 和依赖绘图 | 0.2.0 | 6.658 秒 | 8 次 CLI 调用，返回 3,833 字节；报告（原始记录保存在外部私有报告目录） |
+| 跨进程交接及三进程同 ID 竞争 | 0.2.0 | 15.387 秒 | 16 次 CLI 调用，返回 6,262 字节，实际执行一次；报告（原始记录保存在外部私有报告目录） |
+| 提交确认丢失、换 agent 恢复 | 0.2.0 | 14.854 秒 | 10 次 CLI 调用，返回 5,506 字节，50,000 行计算正确；报告（原始记录保存在外部私有报告目录） |
+| 14 个混合 MCP worker | 0.2.1 | 工作负载 27.909 秒；完整测试 38.004 秒 | 预期终态全部匹配；报告（原始记录保存在外部私有报告目录） |
 | 11 份文件并发取回 | 0.2.1 | 0.414 秒 | 30,055 字节，11 份内容和 manifest 均核验 |
 | 全新 MCP 会话的 11 路下载回归 | 0.2.1 | 0.941 秒 | 不预加载工具 schema，11 个调用全部响应 |
-| 主 agent 批量核验及远端汇总 | 0.2.1 | 3.431 秒 | 21 个源任务、24 份远端产物；[报告](../benchmarks/codex_coordinator.json) |
+| 主 agent 批量核验及远端汇总 | 0.2.1 | 3.431 秒 | 21 个源任务、24 份远端产物；报告（原始记录保存在外部私有报告目录） |
 
 主 agent 一次无日志批量查询核验 21 个源任务：18 个成功，以及预期的失败、超时和取消各一个。汇总脚本直接读取三个 subagent 和网络测试的远端文件，核验全部 24 份文件的 SHA256 / 大小，再交叉检查统计真值、表格、计算和执行计数。取回汇总后，主 agent 在本地独立重算核对，不只相信子 agent 的文字报告。
 
@@ -54,18 +54,18 @@
 
 ## 如何复现
 
-安装 Release、配置自己的授权密钥后，在仓库目录运行。测试驱动本身需要本地 Python / MCP SDK；这与被测试的独立 Release 无 Python / SSH PATH 要求不同。远端分析测试还依赖指定的 R tidy 环境；使用其它服务器需调整 Rscript 路径。
+安装 Release、配置自己的授权密钥后，在仓库目录运行。测试驱动本身需要本地 Python / MCP SDK；这与被测试的独立 Release 无 Python / SSH PATH 要求不同。远端分析测试还依赖指定的 R tidy 环境；服务器别名和 Rscript 路径均需显式传入；以下大写参数由调用者提供。
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e '.[mcp,test]'
-.venv/bin/python tests/codex_analysis.py --run
-.venv/bin/python tests/codex_handoff.py --run
-.venv/bin/python tests/codex_multitask.py --run
-.venv/bin/python tests/codex_network.py --run
-.venv/bin/python tests/codex_coordinator.py --run
+.venv/bin/python tests/codex_analysis.py --run --server SERVER --rscript REMOTE_RSCRIPT
+.venv/bin/python tests/codex_handoff.py --run --server SERVER
+.venv/bin/python tests/codex_multitask.py --run --server SERVER
+.venv/bin/python tests/codex_network.py --run --server SERVER
+.venv/bin/python tests/codex_coordinator.py --run --server SERVER
 ```
 
-Coordinator 读取以上四份报告中的远端路径和任务 ID，因此应在这些任务产物仍保留时运行。其它测试均使用新 ID / 专用目录，成功后将最新测量写入 `benchmarks/codex_*.json`。测试不会结束共享 tmux 会话。
+Coordinator 读取以上四份报告中的远端路径和任务 ID，因此应在这些任务产物仍保留时运行。其它测试均使用新 ID / 专用目录，成功后将最新测量写入 外部报告目录中的 `codex_*.json`。测试不会结束共享 tmux 会话。
 
-源码、测量和合成任务 ID 可以公开；输入矩阵、图片、完整日志、真实配置和私钥留在忽略的 `.local/` 中。报告中的远端临时路径不是稳定下载链接。
+源码和脱敏后的汇总测量可以公开；任务 ID、原始报告、输入矩阵、图片、完整日志、配置和私钥仅留在外部私有目录中。报告中的远端临时路径不是稳定下载链接。

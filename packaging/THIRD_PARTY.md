@@ -4,4 +4,4 @@ The Linux distribution includes CPython, PyInstaller's bootloader, the official 
 
 CPython uses the PSF license; MCP uses MIT; PyInstaller uses GPL with its bootloader exception allowing application distribution; OpenSSH carries BSD-style and other notices in the supplied openssh-client copyright. OpenSSL, Kerberos, zlib, SELinux and PCRE notices are included. Glibc and the system loader remain supplied by the Linux OS.
 
-No user's private keys, SSH configuration, known_hosts, tokens, local logs or server credentials are included in this release. The public server catalog contains deployment metadata only.
+No user's private keys, SSH configuration, known_hosts, tokens, local logs or server credentials are included in this release. No deployment definitions are bundled.

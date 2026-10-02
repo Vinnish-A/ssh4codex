@@ -3,13 +3,50 @@ from pathlib import Path
 import subprocess
 
 import pytest
-from ssh4codex.client import Client, SSHError
+from ssh4codex.client import Client, SSHError, load_server
+
+
+def test_unconfigured_server_fails_before_transport(tmp_path, monkeypatch):
+    monkeypatch.setenv('SSH4CODEX_CONFIG', str(tmp_path / 'missing.json'))
+    monkeypatch.setenv('SSH4CODEX_STATE', str(tmp_path / 'state'))
+    def unexpected_transport(*args, **kwargs):
+        pytest.fail('An unconfigured server must never start SSH')
+    monkeypatch.setattr(subprocess, 'run', unexpected_transport)
+    with pytest.raises(SSHError) as error:
+        Client('unconfigured-server')
+    assert error.value.kind == 'configuration'
+    assert not (tmp_path / 'state').exists()
+
+
+@pytest.mark.parametrize('missing', ['target', 'session'])
+def test_connection_requires_explicit_target_and_session(tmp_path, monkeypatch, missing):
+    profile = {'target': 'user@example.invalid', 'session': 'unit-session'}
+    profile.pop(missing)
+    config = tmp_path / 'config.json'
+    config.write_text(json.dumps({'servers': {'example': profile}}))
+    monkeypatch.setenv('SSH4CODEX_CONFIG', str(config))
+    with pytest.raises(SSHError) as error:
+        load_server('example')
+    assert error.value.kind == 'configuration' and missing in str(error.value)
+
+
+def test_external_profile_is_read_without_modification(tmp_path, monkeypatch):
+    profile = {'target': 'user@example.invalid', 'session': 'custom-session', 'port': 2201}
+    config = tmp_path / 'config.json'
+    original = json.dumps({'servers': {'example': profile}})
+    config.write_text(original)
+    monkeypatch.setenv('SSH4CODEX_CONFIG', str(config))
+    assert load_server('example') == profile
+    assert config.read_text() == original
+    with pytest.raises(SSHError) as error:
+        load_server('other-server')
+    assert error.value.kind == 'configuration'
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     config = tmp_path / 'config.json'
-    config.write_text(json.dumps({'servers': {'example': {'target': 'user@example', 'session': 'data'}}}))
+    config.write_text(json.dumps({'servers': {'example': {'target': 'user@example', 'session': 'unit-session'}}}))
     monkeypatch.setenv('SSH4CODEX_CONFIG', str(config))
     monkeypatch.setenv('SSH4CODEX_STATE', str(tmp_path / 'state'))
     return Client('example')
@@ -118,7 +155,7 @@ def test_interactive_connect_remembers_target_after_disconnect(client, monkeypat
         return subprocess.CompletedProcess(argv, 255)
     monkeypatch.setattr(subprocess, 'run', launch)
     assert client.connect() == 255
-    assert calls[-1][1] == '-tt' and calls[-1][-1] == 'exec tmux new-session -A -s data -c .'
+    assert calls[-1][1] == '-tt' and calls[-1][-1] == 'exec tmux new-session -A -s unit-session -c .'
     assert client.connect('analysis') == 255
     assert Client('example').connect() == 255
     assert calls[-1][-1] == 'exec tmux new-session -A -s analysis -c .'
@@ -129,17 +166,17 @@ def test_connect_invalid_target_does_not_overwrite_selection(client, monkeypatch
     from ssh4codex import client as module
     monkeypatch.setattr(module.sys.stdin, 'isatty', lambda: True)
     monkeypatch.setattr(module.sys.stdout, 'isatty', lambda: True)
-    client.tmux_target.write_text('data')
+    client.tmux_target.write_text('unit-session')
     with pytest.raises(ValueError):
-        client.connect('data; touch /tmp/injected')
-    assert client.tmux_target.read_text() == 'data'
+        client.connect('unit-session; touch /tmp/injected')
+    assert client.tmux_target.read_text() == 'unit-session'
 
 
 def test_connect_requires_terminal_before_persisting_target(client, monkeypatch):
     from ssh4codex import client as module
     monkeypatch.setattr(module.sys.stdin, 'isatty', lambda: False)
     with pytest.raises(SSHError) as error:
-        client.connect('data')
+        client.connect('unit-session')
     assert error.value.kind == 'configuration'
     assert not client.tmux_target.exists()
 
@@ -147,4 +184,4 @@ def test_connect_requires_terminal_before_persisting_target(client, monkeypatch)
 def test_manual_session_selection_does_not_redirect_automated_tasks(client, monkeypatch):
     client.tmux_target.write_text('analysis')
     monkeypatch.setattr(client, 'rpc', lambda action, **spec: spec)
-    assert client.submit('printf test', task_id='configured-session')['session'] == 'data'
+    assert client.submit('printf test', task_id='configured-session')['session'] == 'unit-session'

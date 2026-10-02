@@ -28,24 +28,16 @@ def config_path():
     return Path(os.environ.get('SSH4CODEX_CONFIG', '~/.config/ssh4codex/config.json')).expanduser()
 
 
-def server_catalog():
-    return json.loads(Path(__file__).with_name('catalog.json').read_text())
-
-
 def load_server(name):
     path = config_path()
     config = json.loads(path.read_text()) if path.exists() else {'servers': {}}
     if name in config.get('servers', {}):
         server = config['servers'][name]
-    elif name in server_catalog():
-        entry = server_catalog()[name]
-        server = {k: entry[k] for k in ['target', 'port', 'cwd', 'session']}
-        for candidate in entry.get('identity_candidates', []):
-            if Path(candidate).expanduser().is_file():
-                server['identity_file'] = candidate
-                break
     else:
-        raise SSHError('configuration', 'Unknown server: ' + name)
+        raise SSHError('configuration', 'Server is not defined in local configuration: ' + name)
+    for field in ('target', 'session'):
+        if not isinstance(server.get(field), str) or not server[field]:
+            raise SSHError('configuration', 'Local server configuration requires ' + field)
     target = server['target']
     if target.startswith('-') or any(c.isspace() for c in target):
         raise SSHError('configuration', 'Invalid SSH target')
@@ -129,7 +121,7 @@ class Client:
         if not sys.stdin.isatty() or not sys.stdout.isatty():
             raise SSHError('configuration', 'connect requires an interactive terminal; use run/status for agent tasks')
         if session is None:
-            session = self.tmux_target.read_text().strip() if self.tmux_target.exists() else self.server.get('session', 'ssh4codex')
+            session = self.tmux_target.read_text().strip() if self.tmux_target.exists() else self.server['session']
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', session):
             raise ValueError('Invalid tmux session name')
         # Keep the selected target even if the SSH connection later drops.
@@ -224,7 +216,7 @@ class Client:
         remote.job_dir(task_id)  # Validate without creating any local remote-state paths.
         spec = dict(task_id=task_id, script=script, cwd=cwd or self.server.get('cwd', '.'),
                     env=env or {}, interpreter=interpreter or ['bash'], artifacts=artifacts or [],
-                    timeout=timeout, session=self.server.get('session', 'ssh4codex'))
+                    timeout=timeout, session=self.server['session'])
         # Persist identity before network mutation: recover even if the response is lost.
         path = self.local / ('task-' + task_id + '.json')
         record = {'server': self.name, 'task_id': task_id}

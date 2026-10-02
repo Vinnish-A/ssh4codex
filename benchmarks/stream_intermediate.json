@@ -1,7 +1,0 @@
-{
-  "passed": false,
-  "scenario": "2MiB os.urandom artifact interrupted after body bytes reached local staging",
-  "error": "protocol: unexpected end of data despite SSH exit status 0",
-  "existing_target_corrupted": false,
-  "resolution": "classify declared-length truncation as transport failure and retry read-only download once"
-}

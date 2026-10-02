@@ -1,6 +1,6 @@
 # 网络压力与性能测试
 
-2026-10-02，WSL → Solvinglab，任务全部在远端 tmux `data` 的独立窗口运行。只在专用 `/tmp/ssh4codex-*` 目录执行合成任务，没有运行科研分析。结果是这次链路上的测量，不是所有网络上的速度保证。
+2026-10-02，WSL → 配置的远端主机，任务全部在外部配置指定的远端 tmux 会话中独立运行。只在专用 `/tmp/ssh4codex-*` 目录执行合成任务，没有运行科研分析。结果是这次链路上的测量，不是所有网络上的速度保证。
 
 ## 方法
 
@@ -41,19 +41,19 @@
 ## 复跑与记录
 
 ```bash
-.venv/bin/python tests/stress.py --output benchmarks/stress_after_final.json --require-pass
-.venv/bin/python tests/stream_drop.py
-.venv/bin/python tests/live_solvinglab.py
-.venv/bin/python tests/mcp_acceptance.py
+.venv/bin/python tests/stress.py --server SERVER --output PRIVATE_REPORT_FILE --require-pass
+.venv/bin/python tests/stream_drop.py --server SERVER
+.venv/bin/python tests/live_server.py --server SERVER --rscript REMOTE_RSCRIPT
+.venv/bin/python tests/mcp_acceptance.py --server SERVER
 python3 -m pytest -q
 ```
 
-需要已授权服务器密钥及开发环境。压力入口不由 pytest 自动收集，不在无密钥 GitHub CI 中运行。
+大写参数由调用者提供；报告路径应在仓库外。需要外部连接配置、已授权服务器密钥及开发环境。压力入口不由 pytest 自动收集，不在无密钥 GitHub CI 中运行。
 
-- [基线记录](../benchmarks/stress_before.json)
-- [初次调优记录，包括失败](../benchmarks/stress_intermediate.json)
-- [最终压力记录](../benchmarks/stress_after_final.json)
-- [32 路并发记录](../benchmarks/pressure32.json)
+- 基线记录（原始记录保存在外部私有报告目录）
+- 初次调优记录，包括失败（原始记录保存在外部私有报告目录）
+- 最终压力记录（原始记录保存在外部私有报告目录）
+- 32 路并发记录（原始记录保存在外部私有报告目录）
 
 当前没有断点续传；网络重试会重新读取整条文件流。压缩只对可压缩数据有效，已经压缩的数据或随机字节通常收益较小。超过有限重试后返回明确错误，避免无限等待；本地故障检测时间包含连接/请求预算，不能用客户端缩短一个仍可用但很慢的真实链路。
 
@@ -61,7 +61,7 @@ python3 -m pytest -q
 
 额外两项测试均通过：
 
-- [不可压缩文件中断记录](../benchmarks/stream_drop.json)：2 MiB os.urandom 数据，已在本地暂存 1 MiB 时断开；一次重试后完整恢复，SHA256 一致，3.742 秒，无暂存残留。
-- [大段状态响应中断记录](../benchmarks/rpc_stream_drop.json)：1 MiB 日志查询，桥已转发约 65 KiB 时断开；共两次 RPC，完整响应恢复，2.544 秒。
+- 不可压缩文件中断记录（原始记录保存在外部私有报告目录）：2 MiB os.urandom 数据，已在本地暂存 1 MiB 时断开；一次重试后完整恢复，SHA256 一致，3.742 秒，无暂存残留。
+- 大段状态响应中断记录（原始记录保存在外部私有报告目录）：1 MiB 日志查询，桥已转发约 65 KiB 时断开；共两次 RPC，完整响应恢复，2.544 秒。
 
-[首次文件截断失败与修复记录](../benchmarks/stream_intermediate.json) 保留。以上均是下载/查询恢复；不能据此自动重放任务或上传，也不是断点续传。
+首次文件截断失败与修复记录（原始记录保存在外部私有报告目录） 保留。以上均是下载/查询恢复；不能据此自动重放任务或上传，也不是断点续传。

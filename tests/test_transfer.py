@@ -16,7 +16,7 @@ from ssh4codex import remote
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     config=tmp_path/'config.json'
-    config.write_text(json.dumps({'servers':{'one':{'target':'user@example'},'two':{'target':'user@example'}}}))
+    config.write_text(json.dumps({'servers':{'one':{'target':'user@example.invalid','session':'unit-session'},'two':{'target':'user@example.invalid','session':'unit-session'}}}))
     monkeypatch.setenv('SSH4CODEX_CONFIG',str(config))
     monkeypatch.setenv('SSH4CODEX_STATE',str(tmp_path/'state'))
     c=Client('one');c.agent_marker.touch()

@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
+from live_support import PRIVATE_ROOT, REPORTS, write_report
 import random
 import statistics
 import subprocess
@@ -92,7 +93,7 @@ def metrics(samples):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--server', default='solvinglab')
+    parser.add_argument('--server', required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--jobs', type=int, default=48)
     parser.add_argument('--concurrency', type=int, default=8)
@@ -100,7 +101,7 @@ def main():
     args = parser.parse_args()
     base = load_server(args.server)
     token = uuid.uuid4().hex[:12]
-    folder = Path('.local/stress') / token
+    folder = PRIVATE_ROOT/'stress' / token
     folder.mkdir(parents=True)
     config = folder/'config.json'
     state = folder/'state'
@@ -131,6 +132,7 @@ def main():
         print(name, json.dumps(report['phases'][name]), flush=True)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, indent=2))
+        args.output.chmod(0o600)
 
     try:
         direct = Client('direct')
@@ -295,6 +297,7 @@ def main():
         phase('8MiB_roundtrip_jitter',binary)
         report['all_passed']=all(s['passed'] for s in report['phases'].values())
         args.output.write_text(json.dumps(report,indent=2))
+        args.output.chmod(0o600)
     finally:
         for name in entries:
             c=Client(name)

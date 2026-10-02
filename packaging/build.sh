@@ -12,7 +12,6 @@ trap 'rm -rf -- "$work_dir"' EXIT
   --name ssh4codex --distpath "$work_dir/dist" --workpath "$work_dir/build" --specpath "$work_dir" \
   --paths "$project_dir" --collect-submodules mcp.server --collect-data jsonschema_specifications --copy-metadata mcp \
   --add-data "$project_dir/ssh4codex/remote.py:ssh4codex" \
-  --add-data "$project_dir/ssh4codex/catalog.json:ssh4codex" \
   "$project_dir/packaging/entry.py"
 package_dir="$work_dir/dist/ssh4codex"
 mkdir -p "$package_dir/tools/lib" "$package_dir/licenses"
@@ -56,12 +55,6 @@ cp packaging/THIRD_PARTY.md "$package_dir/THIRD_PARTY.md"
 cp README.md "$package_dir/README.md"
 mkdir "$package_dir/docs"
 cp docs/*.md "$package_dir/docs/"
-mkdir "$package_dir/benchmarks"
-for report in live_acceptance mcp_acceptance measurement stress_before stress_intermediate stress_after_final pressure32 stream_intermediate stream_drop rpc_stream_drop codex_analysis codex_handoff codex_network codex_multitask codex_multitask_intermediate codex_coordinator tmux_connect; do
-  if [[ -f "benchmarks/$report.json" ]]; then
-    cp "benchmarks/$report.json" "$package_dir/benchmarks/"
-  fi
-done
 version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml | head -1)"
 printf '%s\n' "$version" > "$package_dir/VERSION"
 asset="ssh4codex-linux-$(uname -m).tar.gz"

@@ -1,8 +1,0 @@
-{
-  "passed": true,
-  "log_bytes": 1048576,
-  "dropped_after_proxy_bytes": 66732,
-  "rpc_attempts": 2,
-  "recovered_full_response": true,
-  "elapsed_s": 2.544
-}

@@ -2,7 +2,7 @@
 
 Run: .venv/bin/python tests/codex_multitask.py --run
 No remote Codex process is used: local SDK calls coordinate isolated tmux tasks.
-Synthetic inputs, artifacts, and complete tool responses stay under .local/.
+Synthetic inputs, artifacts, and complete tool responses stay in external private test storage.
 """
 import argparse
 import asyncio
@@ -12,6 +12,8 @@ import csv
 import json
 import os
 from pathlib import Path
+from live_support import PRIVATE_ROOT, REPORTS, write_report
+from ssh4codex.client import load_server
 import shlex
 import subprocess
 import time
@@ -70,8 +72,9 @@ print('progress complete', flush=True)
 
 
 async def exercise(args):
+    expected_session = load_server(args.server)["session"]
     run_id = uuid.uuid4().hex[:12]
-    local = ROOT / '.local' / 'workflows' / 'multitask' / run_id
+    local = PRIVATE_ROOT / 'workflows' / 'multitask' / run_id
     local.mkdir(parents=True, mode=0o700)
     remote = args.remote_root.rstrip('/') + '/' + run_id
     started = time.perf_counter()
@@ -123,8 +126,8 @@ async def exercise(args):
                 if setup['state'] not in TERMINAL:
                     setup = await call('remote_wait', {'task_id': setup['task_id'], 'seconds': 10})
                 assert setup['state'] == 'succeeded', setup
-                assert setup['session'] == 'data', setup
-                checks.append({'check': 'all_remote_compute_in_shared_data_tmux_session', 'passed': True})
+                assert setup['session'] == expected_session, setup
+                checks.append({'check': 'all_remote_compute_in_configured_tmux_session', 'passed': True})
 
                 async def submit(job):
                     return await call('remote_run', {
@@ -136,7 +139,7 @@ async def exercise(args):
                 workload_start = time.perf_counter()
                 submitted = await asyncio.gather(*(submit(job) for job in jobs))
                 submission_seconds = time.perf_counter() - workload_start
-                assert all(item['session'] == 'data' for item in submitted)
+                assert all(item['session'] == expected_session for item in submitted)
                 task_ids = list(by_id)
                 before = await call('remote_status_many', {'task_ids': task_ids})
                 assert all('stdout' not in item and 'stderr' not in item for item in before['tasks'])
@@ -254,7 +257,7 @@ async def exercise(args):
                     'schema': 1, 'recorded_utc': datetime.now(timezone.utc).isoformat(),
                     'installed_release': release, 'transport': 'official MCP Python SDK / installed stdio binary',
                     'mcp_server_info': initialization.serverInfo.model_dump(mode='json'),
-                    'server_process_environment_PATH': '/nonexistent', 'tmux_session': 'data',
+                    'server_process_environment_PATH': '/nonexistent', 'tmux_session': expected_session,
                     'synthetic_inputs_only': True, 'remote_native_codex_used': False,
                     'remote_work_directory': remote,
                     'workers': len(jobs), 'outcomes': dict(Counter(item['state'] for item in final.values())),
@@ -301,16 +304,16 @@ async def exercise(args):
                 (local / 'initialization.json').write_text(initialization.model_dump_json(indent=2))
                 (local / 'responses.json').write_text(json.dumps(journal, indent=2))
                 (local / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
-                (ROOT / 'benchmarks' / 'codex_multitask.json').write_text(json.dumps(report, indent=2) + '\n')
+                write_report("codex_multitask.json", report)
                 print(json.dumps(report, indent=2), flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run', action='store_true', help='Explicitly authorize real remote synthetic tasks')
-    parser.add_argument('--server', default='solvinglab')
+    parser.add_argument('--server', required=True)
     parser.add_argument('--binary', default='~/.local/bin/ssh4codex-mcp')
-    parser.add_argument('--remote-root', default='/tmp/ssh4codex-codex-b7ffc0b0cfe1/multitask')
+    parser.add_argument('--remote-root', default='/tmp/ssh4codex-workflows/multitask')
     args = parser.parse_args()
     if not args.run:
         parser.error('Opt-in required: pass --run to contact the remote server')

@@ -2,7 +2,7 @@
 
 Run after all four workflow reports exist:
     python3 tests/codex_coordinator.py --run
-Raw responses, uploaded manifest and fetched summary remain under .local/.
+Raw responses, uploaded manifest and fetched summary remain in external private test storage.
 """
 import argparse
 from collections import Counter
@@ -11,6 +11,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from live_support import PRIVATE_ROOT, REPORTS, write_report
+from ssh4codex.client import load_server
 import random
 import shlex
 import subprocess
@@ -150,6 +152,7 @@ def expected_summary(manifest):
 
 
 def exercise(args):
+    expected_session = load_server(args.server)["session"]
     # Read every prerequisite before creating a run directory or contacting SSH.
     reports = {source: json.loads((Path(args.reports) / f'codex_{source}.json').read_text())
                for source in SOURCES}
@@ -157,7 +160,7 @@ def exercise(args):
     tasks = source_tasks(reports)
     started = time.perf_counter()
     run_id = uuid.uuid4().hex[:12]
-    private = ROOT / '.local/workflows/coordinator' / run_id
+    private = PRIVATE_ROOT / 'workflows/coordinator' / run_id
     private.mkdir(parents=True, mode=0o700)
     private.chmod(0o700)
     env = dict(os.environ, SSH4CODEX_STATE=str(private / 'state'))
@@ -188,7 +191,7 @@ def exercise(args):
         status = by_id[task['task_id']]
         assert status['state'] == task['state'], status
         assert status['exit_code'] == task['exit_code'], status
-        assert status['session'] == 'data', status
+        assert status['session'] == expected_session, status
         assert 'stdout' not in status and 'stderr' not in status, status
     manifest = {'tasks': tasks, 'artifacts': source_artifacts(reports, statuses)}
     manifest_path = private / 'manifest.json'
@@ -199,7 +202,7 @@ def exercise(args):
                       '--cwd', '/tmp', '--task-id', prepare_id, '--wait', '3')
     if prepare['state'] in {'queued', 'running'}:
         prepare = request('wait', args.server, prepare_id, '--seconds', '15')
-    assert prepare['state'] == 'succeeded' and prepare['session'] == 'data', prepare
+    assert prepare['state'] == 'succeeded' and prepare['session'] == expected_session, prepare
     upload = request('put', args.server, str(manifest_path), remote_work + '/manifest.json')
     assert upload['sha256'] == hashlib.sha256(manifest_path.read_bytes()).hexdigest(), upload
     script = private / 'join.py'
@@ -211,7 +214,7 @@ def exercise(args):
     if joined['state'] in {'queued', 'running'}:
         joined = request('wait', args.server, task_id, '--seconds', '15')
     assert joined['state'] == 'succeeded' and joined['exit_code'] == 0, joined
-    assert joined['session'] == 'data', joined
+    assert joined['session'] == expected_session, joined
     fetched = request('fetch', args.server, task_id, '--to', str(private / 'downloads'))
     assert len(fetched['files']) == 1, fetched
     artifact = fetched['files'][0]
@@ -222,7 +225,7 @@ def exercise(args):
     assert summary == expected_summary(manifest), summary
     report = {'schema': 1, 'recorded_utc': datetime.now(timezone.utc).isoformat(),
               'scenario': 'independent coordinator verifies and joins four remote workflow artifact groups',
-              'cli_version': version, 'server_alias': args.server, 'tmux_session': 'data',
+              'cli_version': version, 'server_alias': args.server, 'tmux_session': expected_session,
               'run_id': run_id, 'all_passed': True,
               'elapsed_seconds': round(time.perf_counter() - started, 3),
               'subprocess_requests': len(requests),
@@ -239,7 +242,10 @@ def exercise(args):
                          'remote_source_checksums': True, 'remote_join_contents': True,
                          'verified_summary_fetch': True, 'independent_local_summary': True},
               'joined_summary': summary}
-    Path(args.output).write_text(json.dumps(report, indent=2) + '\n')
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    output.write_text(json.dumps(report, indent=2) + '\n')
+    output.chmod(0o600)
     print(json.dumps({'all_passed': True, 'source_tasks': len(tasks),
                       'artifacts': len(manifest['artifacts']), 'request_count': len(requests),
                       'elapsed_seconds': report['elapsed_seconds'], 'task_id': task_id}))
@@ -249,10 +255,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run', action='store_true', help='Run real remote synthetic coordination')
     parser.add_argument('--cli', default='~/.local/bin/ssh4codex')
-    parser.add_argument('--server', default='solvinglab')
-    parser.add_argument('--reports', default=str(ROOT / 'benchmarks'))
-    parser.add_argument('--remote-root', default='/tmp/ssh4codex-codex-b7ffc0b0cfe1/coordinator')
-    parser.add_argument('--output', default=str(ROOT / 'benchmarks/codex_coordinator.json'))
+    parser.add_argument('--server', required=True)
+    parser.add_argument('--reports', default=str(REPORTS))
+    parser.add_argument('--remote-root', default='/tmp/ssh4codex-workflows/coordinator')
+    parser.add_argument('--output', default=str(REPORTS / "codex_coordinator.json"))
     args = parser.parse_args()
     if not args.run:
         parser.error('Opt-in required: pass --run after all source reports exist')

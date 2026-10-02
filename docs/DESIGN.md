@@ -15,3 +15,5 @@ worker 使用独立子进程组、单独 stdout/stderr、运行超时和取消�
 本地故障分类：configuration、authentication、host_key、transport、transport_timeout、submission_unknown、protocol、setup、remote、artifact_not_ready、artifact_missing、artifact_changed、artifact_collision、transfer、transfer_unknown。错误也返回 task_id（如果已知）。正常运行不打印凭据，保留 OpenSSH 的主机密钥检查。
 
 只读 RPC 和下载在网络故障后最多重试一次，并绕过失效 master；提交和上传不自动重放。无完整提交 JSON 时保留 submission_unknown/task_id。本地任务归属使用锁与原子记录，防止跨进程重试读取半份 JSON。status_many 复用一次 tmux pane 扫描；默认不返回日志。SSH 压缩默认开启，可按服务器关闭。
+
+连接定义仅从仓库外的用户配置读取，必须包含 SSH 目标和 tmux 会话；运行时不包含服务器目录或部署模板。真实验收报告、认证记录和临时测试缓存保存于外部私有目录，不进入发布包。

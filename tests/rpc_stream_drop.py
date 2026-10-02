@@ -1,9 +1,11 @@
 """Opt-in real interruption during a large status JSON response."""
 from concurrent.futures import ThreadPoolExecutor
+import argparse
 import hashlib
 import json
 import os
 from pathlib import Path
+from live_support import PRIVATE_ROOT, REPORTS, write_report
 import subprocess
 import time
 import uuid
@@ -13,10 +15,13 @@ from ssh4codex.client import Client,load_server
 
 
 def main():
-    base=load_server('solvinglab')
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--server', required=True)
+    args=parser.parse_args()
+    base=load_server(args.server)
     token=uuid.uuid4().hex[:12]
-    local=Path('.local/stress')/('stream-'+token);local.mkdir(parents=True)
-    direct=Client('solvinglab')
+    local=PRIVATE_ROOT/'stress'/('stream-'+token);local.mkdir(parents=True)
+    direct=Client(args.server)
     script="python3 - <<'INNER'\nfrom pathlib import Path\nimport os\nprint(os.urandom(512*1024).hex())\nINNER"
     work='/tmp/ssh4codex-stream-'+token
     direct.submit('mkdir -p '+work,cwd='/tmp',wait_seconds=3)
@@ -60,7 +65,7 @@ def main():
         report={'passed':True,'log_bytes':len(expected),'dropped_after_proxy_bytes':partial,
                 'rpc_attempts':len(calls),'recovered_full_response':True,
                 'elapsed_s':round(time.monotonic()-start,3)}
-        Path('benchmarks/rpc_stream_drop.json').write_text(json.dumps(report,indent=2));print(json.dumps(report),flush=True)
+        write_report("rpc_stream_drop.json",report);print(json.dumps(report),flush=True)
     finally:
         subprocess.run(['ssh',*client.options,'-O','exit',client.server['target']],capture_output=True,timeout=10)
         proxy.close()

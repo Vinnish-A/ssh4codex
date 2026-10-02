@@ -1,0 +1,51 @@
+{
+  "server": "solvinglab",
+  "transport": "OpenSSH with RSA authentication",
+  "latency": {
+    "bare_ssh_warm": {
+      "seconds": [
+        0.8555,
+        0.1663,
+        0.4649,
+        0.1674,
+        0.514
+      ],
+      "median_seconds": 0.4649
+    },
+    "bare_ssh_cold": {
+      "seconds": [
+        2.6177,
+        1.4714,
+        1.8879,
+        2.4752,
+        1.7488
+      ],
+      "median_seconds": 1.8879
+    },
+    "ssh4codex_durable_task": {
+      "seconds": [
+        0.3581,
+        1.0798,
+        0.3585,
+        0.7709,
+        0.3541
+      ],
+      "median_seconds": 0.3585
+    }
+  },
+  "output_comparison": {
+    "scenario": "Three observations after a 300-line generated log; last 100 tmux history lines vs 2048-byte tail then two cursor reads",
+    "tokenizer": "tiktoken o200k_base (proxy, not verified Codex tokenizer)",
+    "tmux_capture_tokens": 3330,
+    "ssh4codex_json_tokens": 593,
+    "output_token_reduction_fraction": 0.8219,
+    "initial_tail_skipped_bytes": 13552,
+    "full_log_preserved_remotely": true
+  },
+  "limitations": [
+    "Bare warm SSH is a lighter contract and can be faster than durable task execution.",
+    "Token comparison measures these returned outputs only; excludes tool schemas, prompts and full conversation.",
+    "Bounded tail omits older log bytes by default and reports skipped; use cursor=0 to read all.",
+    "Same LAN/WAN/server conditions at one time; no claim about arbitrary hosts or R compute time."
+  ]
+}

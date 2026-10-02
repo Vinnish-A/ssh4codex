@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "transport": "stdio",
+  "tools": [
+    "remote_run",
+    "remote_status",
+    "remote_wait",
+    "remote_cancel",
+    "remote_fetch",
+    "remote_tasks",
+    "remote_put"
+  ],
+  "remote_run_state": "succeeded",
+  "remote_task_discovery": true
+}

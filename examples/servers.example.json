@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "lab": {
+      "target": "user@host",
+      "port": 2220,
+      "cwd": "/path/to/project",
+      "session": "data",
+      "identity_file": "~/.ssh/id_rsa"
+    }
+  }
+}

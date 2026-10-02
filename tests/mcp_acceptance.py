@@ -1,0 +1,29 @@
+"""Test the actual stdio MCP protocol using the official client SDK."""
+import asyncio
+import json
+from pathlib import Path
+import sys
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+async def main():
+    root=Path(__file__).resolve().parents[1]
+    params=StdioServerParameters(command=str(root/'.venv/bin/ssh4codex-mcp'),args=[])
+    async with stdio_client(params) as (read,write):
+        async with ClientSession(read,write) as session:
+            await session.initialize()
+            tools=await session.list_tools()
+            assert len(tools.tools)==7
+            response=await session.call_tool('remote_run',{'server':'solvinglab','script':"printf 'MCP roundtrip OK\\n'",'wait_seconds':3})
+            data=response.structuredContent
+            # FastMCP may wrap primitive returns; dict tool returns should remain structured.
+            assert data['state']=='succeeded',data
+            assert data['stdout']['text']=='MCP roundtrip OK\n'
+            listed=await session.call_tool('remote_tasks',{'server':'solvinglab'})
+            assert listed.structuredContent['tasks']
+            report={'passed':True,'transport':'stdio','tools':[t.name for t in tools.tools],
+                    'remote_run_state':data['state'],'remote_task_discovery':True}
+            (root/'benchmarks/mcp_acceptance.json').write_text(json.dumps(report,indent=2))
+            print(json.dumps(report))
+
+asyncio.run(main())

@@ -1,0 +1,77 @@
+{
+  "server": "solvinglab",
+  "tmux_session": "data",
+  "remote_test_directory": "/mnt/nfs_data/xzh/ssh4codex-tests/ea49ad009718",
+  "checks": [
+    {
+      "check": "doctor_python_tmux",
+      "passed": true
+    },
+    {
+      "check": "short_job_separate_streams",
+      "passed": true,
+      "seconds": 0.673
+    },
+    {
+      "check": "exit_7_is_failed",
+      "passed": true,
+      "seconds": 0.619
+    },
+    {
+      "check": "literal_quotes_unicode_binary_fetch",
+      "passed": true,
+      "seconds": 1.708
+    },
+    {
+      "check": "concurrent_retry_runs_once_and_conflict_rejected",
+      "passed": true,
+      "seconds": 1.155
+    },
+    {
+      "check": "incremental_utf8_logs_no_duplicates_or_loss",
+      "passed": true,
+      "seconds": 18.366
+    },
+    {
+      "check": "early_fetch_blocked_then_verified",
+      "passed": true,
+      "seconds": 3.914
+    },
+    {
+      "check": "changed_artifact_checksum_rejected",
+      "passed": true,
+      "seconds": 1.581
+    },
+    {
+      "check": "missing_artifact_reported",
+      "passed": true,
+      "seconds": 1.333
+    },
+    {
+      "check": "timeout_terminates_group",
+      "passed": true,
+      "seconds": 1.537
+    },
+    {
+      "check": "cancel_only_selected_task",
+      "passed": true,
+      "seconds": 2.601
+    },
+    {
+      "check": "transport_disconnect_and_fresh_client_recovery",
+      "passed": true,
+      "seconds": 5.732
+    },
+    {
+      "check": "512KiB_binary_upload_and_roundtrip",
+      "passed": true,
+      "seconds": 24.584
+    },
+    {
+      "check": "real_tidy_R_ggplot2_qs_and_PNG_fetch",
+      "passed": true,
+      "seconds": 3.06
+    }
+  ],
+  "all_passed": true
+}

@@ -1,0 +1,31 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  linux-x86_64:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: python -m pip install -r packaging/requirements.txt pytest
+      - run: python -m pytest -q
+      - run: bash packaging/build.sh
+      - name: Standalone runtime and installer smoke
+        run: |
+          mkdir /tmp/ssh4codex-release
+          tar -xzf release-assets/ssh4codex-linux-x86_64.tar.gz -C /tmp/ssh4codex-release
+          python tests/release.py /tmp/ssh4codex-release
+          SSH4CODEX_ARCHIVE="$PWD/release-assets/ssh4codex-linux-x86_64.tar.gz" \
+            SSH4CODEX_BIN_DIR=/tmp/ssh4codex-install/bin bash install.sh
+          /tmp/ssh4codex-install/bin/ssh4codex --version
+      - name: Publish release and binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag \
+            --title "ssh4codex $GITHUB_REF_NAME" --notes-file packaging/release-notes.md

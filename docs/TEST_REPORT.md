@@ -63,3 +63,5 @@ Linux x86_64 / WSL、glibc 2.35，构建 Python 3.10。将 PATH 设为 `/nonexis
 - 离线安装、重复安装、安装后的完整运行时验证。
 
 入口为 `tests/release.py`。离线 CI 不持有服务器密钥；上述真实服务器测试使用本机已有授权。依赖和二进制不代表原生 Windows/macOS 或其它架构已经验证。常规 SSH 跳板配置若依赖外部 ProxyCommand 程序，仍需要提供这些程序。
+
+正式发布验证：[`v0.1.0`](https://github.com/Vinnish-A/ssh4codex/releases/tag/v0.1.0) 的 [GitHub Actions 构建](https://github.com/Vinnish-A/ssh4codex/actions/runs/36969206031) 成功；从 GitHub 实际下载资产、通过 SHA256 安装后，再次完成无外部 PATH 的 CLI/MCP 验证、内置别名免密 doctor 和远端 `data` 任务。`releases/latest` 正确指向此版本。

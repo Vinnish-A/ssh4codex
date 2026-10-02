@@ -128,3 +128,13 @@ status、status-many、wait、list、doctor 在网络失败后最多重试一次
 可通过 add 设置 `--connect-timeout`（默认 8 秒）、`--rpc-timeout`（默认 10 秒）、`--transfer-timeout`（默认 300 秒）。RPC 等待请求会在 rpc_timeout 基础上加 wait 秒数；新连接重试还允许 connect_timeout 的握手预算。最多两次尝试，不是无限重连。测试用 rpc_timeout=3、connect_timeout=8；不要把较慢网络的握手时间压到 3 秒。
 
 详见 [网络压力与性能报告](PERFORMANCE.md)。当前传输重试从头开始，没有断点续传；超过两次失败时保留明确错误和恢复 ID，由 agent 决定下一步。
+
+## 九、多个 agent 的协作
+
+主 agent 为每个 subagent 分配独立工作目录和明确任务 ID；保持服务器配置一致以复用 SSH master。`SSH4CODEX_STATE` 可分开保存本地记录，远端状态和完成时的产物 manifest 仍是交接依据。避免几个 agent 覆盖同名分析文件。
+
+子 agent 返回 task_id、预期终态、远端产物路径和 SHA256，不把完整矩阵或日志塞进上下文。主 agent 用一次 status-many 核验终态，再让汇总任务读取经过核验的远端产物。需要查看图像时取回图片并实际查看。
+
+subagent 退出不会取消已提交的 tmux 任务。接手时用原 ID 查询；未收到提交确认时保留原 ID / 原请求，不能换 ID 自动重跑。取消只作用于明确选中的任务。网络故障测试使用独立测试连接，不断开大家共享的 master。
+
+MCP 并发下载请使用 0.2.1 或更新版本：0.2.0 的 SSH 下载进程会继承 MCP 输入，在冷工具缓存的并发调用中可能读走后续请求。完整测试和修复证据见 [Codex 工作流报告](CODEX_WORKFLOWS.md)。

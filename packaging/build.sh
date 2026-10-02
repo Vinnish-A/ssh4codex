@@ -57,7 +57,7 @@ cp README.md "$package_dir/README.md"
 mkdir "$package_dir/docs"
 cp docs/*.md "$package_dir/docs/"
 mkdir "$package_dir/benchmarks"
-for report in live_acceptance mcp_acceptance measurement stress_before stress_intermediate stress_after_final pressure32 stream_intermediate stream_drop rpc_stream_drop; do
+for report in live_acceptance mcp_acceptance measurement stress_before stress_intermediate stress_after_final pressure32 stream_intermediate stream_drop rpc_stream_drop codex_analysis codex_handoff codex_network codex_multitask codex_multitask_intermediate codex_coordinator; do
   if [[ -f "benchmarks/$report.json" ]]; then
     cp "benchmarks/$report.json" "$package_dir/benchmarks/"
   fi

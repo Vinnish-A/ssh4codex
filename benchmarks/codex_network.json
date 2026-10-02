@@ -1,0 +1,90 @@
+{
+  "scenario": "standalone analysis under lost acknowledgement, reconnect and agent restart",
+  "runtime": "0.2.0",
+  "run_id": "58f990ac36bb",
+  "shared_session": "data",
+  "checks": {
+    "lost_ack_preserves_id": true,
+    "new_agent_recovers_remote_task": true,
+    "exactly_one_execution": true,
+    "independent_analysis_verification": true,
+    "all_artifacts_sha256": true,
+    "saved_log_cursor_no_duplicate": true
+  },
+  "passed": true,
+  "primary_task_ids": [
+    "codex-network-58f990ac36bb"
+  ],
+  "remote_artifact_paths": [
+    "/tmp/ssh4codex-codex-b7ffc0b0cfe1/network/network-58f990ac36bb/summary.json",
+    "/tmp/ssh4codex-codex-b7ffc0b0cfe1/network/network-58f990ac36bb/values.tsv",
+    "/tmp/ssh4codex-codex-b7ffc0b0cfe1/network/network-58f990ac36bb/executions.txt"
+  ],
+  "elapsed_s": 14.854,
+  "requests": 10,
+  "returned_output_bytes": 5506,
+  "operation_metrics": [
+    {
+      "command": "doctor",
+      "exit_code": 0,
+      "elapsed_s": 2.787,
+      "output_bytes": 104
+    },
+    {
+      "command": "doctor",
+      "exit_code": 0,
+      "elapsed_s": 1.779,
+      "output_bytes": 104
+    },
+    {
+      "command": "run",
+      "exit_code": 0,
+      "elapsed_s": 0.771,
+      "output_bytes": 258
+    },
+    {
+      "command": "status",
+      "exit_code": 0,
+      "elapsed_s": 0.824,
+      "output_bytes": 244
+    },
+    {
+      "command": "run",
+      "exit_code": 2,
+      "elapsed_s": 0.836,
+      "output_bytes": 83
+    },
+    {
+      "command": "wait",
+      "exit_code": 0,
+      "elapsed_s": 5.593,
+      "output_bytes": 1106
+    },
+    {
+      "command": "run",
+      "exit_code": 0,
+      "elapsed_s": 0.83,
+      "output_bytes": 1120
+    },
+    {
+      "command": "fetch",
+      "exit_code": 0,
+      "elapsed_s": 0.675,
+      "output_bytes": 579
+    },
+    {
+      "command": "status",
+      "exit_code": 0,
+      "elapsed_s": 0.885,
+      "output_bytes": 1106
+    },
+    {
+      "command": "status",
+      "exit_code": 0,
+      "elapsed_s": 0.556,
+      "output_bytes": 802
+    }
+  ],
+  "files": 3,
+  "analysis_rows": 50000
+}

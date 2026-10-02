@@ -304,7 +304,9 @@ class Client:
         timeout = self.server.get('transfer_timeout', 300)
         expired = threading.Event()
         with tempfile.TemporaryFile() as errors:
-            proc = subprocess.Popen(self.ssh_argv(command, fresh), stdout=subprocess.PIPE,
+            # Downloads have no input. In MCP mode fd 0 carries JSON-RPC;
+            # inheriting it lets SSH consume another tool request as remote stdin.
+            proc = subprocess.Popen(self.ssh_argv(command, fresh), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                     stderr=errors, env=transport_env())
             def stop():
                 expired.set()

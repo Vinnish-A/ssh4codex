@@ -1,0 +1,248 @@
+{
+  "schema": 1,
+  "recorded_utc": "2026-10-02T06:43:20.221180+00:00",
+  "scenario": "independent coordinator verifies and joins four remote workflow artifact groups",
+  "cli_version": "ssh4codex 0.2.1",
+  "server_alias": "solvinglab",
+  "tmux_session": "data",
+  "run_id": "8446f28b3102",
+  "all_passed": true,
+  "elapsed_seconds": 3.431,
+  "subprocess_requests": 6,
+  "returned_output_bytes": 8184,
+  "requests": [
+    {
+      "operation": "--version",
+      "returncode": 0,
+      "seconds": 0.125,
+      "stdout_bytes": 16,
+      "stderr_bytes": 0
+    },
+    {
+      "operation": "status-many",
+      "returncode": 0,
+      "seconds": 1.054,
+      "stdout_bytes": 7013,
+      "stderr_bytes": 0
+    },
+    {
+      "operation": "run",
+      "returncode": 0,
+      "seconds": 0.712,
+      "stdout_bytes": 258,
+      "stderr_bytes": 0
+    },
+    {
+      "operation": "put",
+      "returncode": 0,
+      "seconds": 0.646,
+      "stdout_bytes": 172,
+      "stderr_bytes": 0
+    },
+    {
+      "operation": "run",
+      "returncode": 0,
+      "seconds": 0.543,
+      "stdout_bytes": 491,
+      "stderr_bytes": 0
+    },
+    {
+      "operation": "fetch",
+      "returncode": 0,
+      "seconds": 0.304,
+      "stdout_bytes": 234,
+      "stderr_bytes": 0
+    }
+  ],
+  "verified_source_tasks": [
+    {
+      "source": "analysis",
+      "task_id": "codex-analysis-prepare-1379a3d6a20a",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "analysis",
+      "task_id": "codex-analysis-statistics-1379a3d6a20a",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "analysis",
+      "task_id": "codex-analysis-plot-1379a3d6a20a",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "handoff",
+      "task_id": "handoff-a83a15063bbf-producer",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "handoff",
+      "task_id": "handoff-a83a15063bbf-aggregate",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "handoff",
+      "task_id": "handoff-a83a15063bbf-durable",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "network",
+      "task_id": "codex-network-58f990ac36bb",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "multitask",
+      "task_id": "multitask-3c06294894eb-calculate-0",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "multitask",
+      "task_id": "multitask-3c06294894eb-calculate-1",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "multitask",
+      "task_id": "multitask-3c06294894eb-calculate-2",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "multitask",
+      "task_id": "multitask-3c06294894eb-calculate-3",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "multitask",
+      "task_id": "multitask-3c06294894eb-calculate-4",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "multitask",
+      "task_id": "multitask-3c06294894eb-calculate-5",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "multitask",
+      "task_id": "multitask-3c06294894eb-table-0",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "multitask",
+      "task_id": "multitask-3c06294894eb-table-1",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "multitask",
+      "task_id": "multitask-3c06294894eb-table-2",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "multitask",
+      "task_id": "multitask-3c06294894eb-progress-0",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "multitask",
+      "task_id": "multitask-3c06294894eb-progress-1",
+      "state": "succeeded",
+      "exit_code": 0
+    },
+    {
+      "source": "multitask",
+      "task_id": "multitask-3c06294894eb-explicit-failure",
+      "state": "failed",
+      "exit_code": 7
+    },
+    {
+      "source": "multitask",
+      "task_id": "multitask-3c06294894eb-timeout",
+      "state": "timed_out",
+      "exit_code": -15
+    },
+    {
+      "source": "multitask",
+      "task_id": "multitask-3c06294894eb-cancel-selected",
+      "state": "cancelled",
+      "exit_code": -15
+    }
+  ],
+  "source_outcomes": {
+    "succeeded": 18,
+    "failed": 1,
+    "timed_out": 1,
+    "cancelled": 1
+  },
+  "manifest_artifact_count": 24,
+  "uploaded_manifest_bytes": 7367,
+  "uploaded_manifest_sha256": "6253e5697a20f4ab61f857ddc82705548ea9b25b68e608c61064d9cfa46c4cc3",
+  "primary_task_ids": [
+    "coordinator-8446f28b3102-join"
+  ],
+  "remote_artifact_paths": [
+    "/tmp/ssh4codex-codex-b7ffc0b0cfe1/coordinator/8446f28b3102/summary.json"
+  ],
+  "summary_artifact": {
+    "bytes": 496,
+    "sha256": "a885648eeea1c5439fecbb3ad29e9778e515e80f46c5ae787f07c9f214e44b58"
+  },
+  "checks": {
+    "batch_source_states_and_shared_session": true,
+    "remote_source_checksums": true,
+    "remote_join_contents": true,
+    "verified_summary_fetch": true,
+    "independent_local_summary": true
+  },
+  "joined_summary": {
+    "all_passed": true,
+    "analysis": {
+      "calls": {
+        "down": 20,
+        "unchanged": 260,
+        "up": 20
+      },
+      "rows": 300
+    },
+    "completion_checksums_verified": 3,
+    "handoff": {
+      "aggregate": {
+        "count": 4,
+        "sum": 20
+      },
+      "executions": 1
+    },
+    "multitask": {
+      "calculate0_n": 10000,
+      "calculate0_sum": 50005000,
+      "table0_rows": 1000,
+      "table0_signal_sum": 49655
+    },
+    "network": {
+      "executions": 1,
+      "summary": {
+        "max": 1000,
+        "min": 0,
+        "n": 50000,
+        "sum": 24965162
+      }
+    },
+    "report_checksums_verified": 21,
+    "source_task_count": 21,
+    "verified_artifacts": 24
+  }
+}

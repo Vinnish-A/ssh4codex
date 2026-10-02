@@ -1,0 +1,190 @@
+{
+  "scenario": "installed-release synthetic analysis and dependent plotting",
+  "cli_version": "ssh4codex 0.2.0",
+  "server_alias": "solvinglab",
+  "tmux_session": "data",
+  "seed": 20261002,
+  "synthetic_dimensions": {
+    "genes": 300,
+    "samples": 12,
+    "control": 6,
+    "case": 6
+  },
+  "ground_truth": {
+    "up": 20,
+    "down": 20,
+    "unchanged": 260,
+    "effect_log2": 3
+  },
+  "checks": {
+    "upload_sha256": true,
+    "artifact_sha256_and_size": true,
+    "independent_fold_changes": true,
+    "independent_group_statistics": true,
+    "all_ground_truth_calls": true,
+    "parent_qs_cache_read": true,
+    "PNG_and_PDF_signatures": true
+  },
+  "observed_calls": {
+    "up": 20,
+    "down": 20,
+    "unchanged": 260
+  },
+  "max_fold_change_absolute_error": 4.884981308350689e-15,
+  "all_passed": true,
+  "elapsed_seconds": 6.658,
+  "subprocess_requests": 8,
+  "returned_output_bytes": 3833,
+  "requests": [
+    {
+      "command": "--version",
+      "seconds": 0.097,
+      "stdout_bytes": 16,
+      "stderr_bytes": 0,
+      "return_code": 0
+    },
+    {
+      "command": "run",
+      "seconds": 0.544,
+      "stdout_bytes": 261,
+      "stderr_bytes": 0,
+      "return_code": 0
+    },
+    {
+      "command": "put",
+      "seconds": 0.699,
+      "stdout_bytes": 154,
+      "stderr_bytes": 0,
+      "return_code": 0
+    },
+    {
+      "command": "put",
+      "seconds": 0.243,
+      "stdout_bytes": 153,
+      "stderr_bytes": 0,
+      "return_code": 0
+    },
+    {
+      "command": "run",
+      "seconds": 0.577,
+      "stdout_bytes": 1014,
+      "stderr_bytes": 0,
+      "return_code": 0
+    },
+    {
+      "command": "fetch",
+      "seconds": 0.535,
+      "stdout_bytes": 795,
+      "stderr_bytes": 0,
+      "return_code": 0
+    },
+    {
+      "command": "run",
+      "seconds": 2.25,
+      "stdout_bytes": 835,
+      "stderr_bytes": 0,
+      "return_code": 0
+    },
+    {
+      "command": "fetch",
+      "seconds": 1.591,
+      "stdout_bytes": 605,
+      "stderr_bytes": 0,
+      "return_code": 0
+    }
+  ],
+  "tasks": [
+    {
+      "label": "prepare",
+      "task_id": "codex-analysis-prepare-1379a3d6a20a",
+      "parent_task_id": null,
+      "state": "succeeded",
+      "exit_code": 0,
+      "session": "data",
+      "seconds": 0.545
+    },
+    {
+      "label": "statistics",
+      "task_id": "codex-analysis-statistics-1379a3d6a20a",
+      "parent_task_id": null,
+      "state": "succeeded",
+      "exit_code": 0,
+      "session": "data",
+      "seconds": 0.577
+    },
+    {
+      "label": "plot",
+      "task_id": "codex-analysis-plot-1379a3d6a20a",
+      "parent_task_id": "codex-analysis-statistics-1379a3d6a20a",
+      "state": "succeeded",
+      "exit_code": 0,
+      "session": "data",
+      "seconds": 2.25
+    }
+  ],
+  "uploads": [
+    {
+      "name": "counts.tsv",
+      "bytes": 18299,
+      "sha256": "00158449f4646ef44c4fedaf753ce68b7b61f5dac05f326f3799726b82a3ad45"
+    },
+    {
+      "name": "samples.tsv",
+      "bytes": 211,
+      "sha256": "246b4ad3c512d2790a6f9722d3add1c7a59365cada76261e3b6aecc58a59f348"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "differential.tsv",
+      "bytes": 32669,
+      "sha256": "19d58a586b139e776176500469d3b989948cb63ed416af78c40dee727f3b08de",
+      "remote_path": "/tmp/ssh4codex-codex-b7ffc0b0cfe1/analysis/differential.tsv"
+    },
+    {
+      "name": "group_summary.tsv",
+      "bytes": 195,
+      "sha256": "066b6926665c622ac4b6704042efa91fef4811ecfc01c5a6cc69d7540209b624",
+      "remote_path": "/tmp/ssh4codex-codex-b7ffc0b0cfe1/analysis/group_summary.tsv"
+    },
+    {
+      "name": "analysis.qs",
+      "bytes": 41313,
+      "sha256": "8604192e496479b296ac11e64e2bccd460171670c4e305a5e65b0d40a4d2a034",
+      "remote_path": "/tmp/ssh4codex-codex-b7ffc0b0cfe1/analysis/analysis.qs"
+    },
+    {
+      "name": "analysis_versions.tsv",
+      "bytes": 36,
+      "sha256": "fb2cb4caf640305e0427da7792722fdb278b013daa9e1343af7855b7557bdc3d",
+      "remote_path": "/tmp/ssh4codex-codex-b7ffc0b0cfe1/analysis/analysis_versions.tsv"
+    },
+    {
+      "name": "differential.png",
+      "bytes": 66212,
+      "sha256": "de000ff9445aecb4a0681a8bf5caa08e3f8abe7cd7c4e5247d3c9329ca32eaac",
+      "remote_path": "/tmp/ssh4codex-codex-b7ffc0b0cfe1/analysis/differential.png"
+    },
+    {
+      "name": "differential.pdf",
+      "bytes": 21942,
+      "sha256": "0cd1ad22148851cd633bf83be106238107b5f8e61e03f74e9f34c34c719c1e52",
+      "remote_path": "/tmp/ssh4codex-codex-b7ffc0b0cfe1/analysis/differential.pdf"
+    },
+    {
+      "name": "cache_check.tsv",
+      "bytes": 57,
+      "sha256": "c3281bc865d61ffe23505accb3969aac49a4a2d18d48f8db3a8392eb773018b9",
+      "remote_path": "/tmp/ssh4codex-codex-b7ffc0b0cfe1/analysis/cache_check.tsv"
+    }
+  ],
+  "primary_task_ids": [
+    "codex-analysis-statistics-1379a3d6a20a",
+    "codex-analysis-plot-1379a3d6a20a"
+  ],
+  "remote_analysis_directory": "/tmp/ssh4codex-codex-b7ffc0b0cfe1/analysis",
+  "visual_review": {
+    "PNG_viewed": true,
+    "result": "Legible labels, correct up/down colors, clear separation at the expected log2 effects."
+  }
+}

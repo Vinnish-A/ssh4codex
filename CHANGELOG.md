@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.1 — 2026-10-02
+
+- Isolated download subprocess stdin from the MCP JSON-RPC stream. Concurrent downloads could otherwise consume subsequent tool requests, leaving fetched files on disk but closing or stalling the MCP session.
+- Added real Codex subagent workflow tests covering synthetic R analysis, dependent plotting, mixed parallel MCP jobs, independent-process handoff and lost-acknowledgement recovery.
+
 ## 0.2.0 — 2026-10-02
 
 - Added batched CLI/MCP status queries and one-stream multi-artifact downloads with streaming hashes and completion-gated atomic delivery.

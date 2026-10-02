@@ -72,3 +72,7 @@ Linux x86_64 / WSL、glibc 2.35，构建 Python 3.10。将 PATH 设为 `/nonexis
 
 
 v0.2.0 [GitHub Actions 发布构建](https://github.com/Vinnish-A/ssh4codex/actions/runs/36972815000) 成功。从 GitHub 正式包完成 SHA256 升级，实际版本 0.2.0；安装包在无外部 Python/SSH PATH 下通过 CLI/MCP 8 工具验证，并完成 Solvinglab doctor。本地独立包还通过 tidy R ggplot2/qs、MCP 批量状态和流式产物下载。初始章节记录 v0.1.0 的耗时，最新 14 项实测数据位于 benchmarks/live_acceptance.json。
+
+## v0.2.1 Codex 协作工作流
+
+三个实际 Codex subagent 完成合成 R 分析、混合 MCP worker 和跨进程交接；主 agent 完成提交确认丢失恢复，以及对 21 个源任务 / 24 份远端产物的独立核验和汇总。并发冷工具缓存下载暴露了 SSH 子进程继承 MCP 输入的问题，修复后全新会话的十一路下载通过。27 项单元测试及独立包无外部 PATH 的 CLI / 内置 SSH / MCP 验证通过。版本、耗时、首次失败和复现入口见 [工作流报告](CODEX_WORKFLOWS.md)。

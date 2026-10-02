@@ -68,7 +68,9 @@ command = "/home/YOUR_USER/.local/bin/ssh4codex-mcp"
 
 ## 实测与开发
 
-26 项单元测试、14 项 Solvinglab 实际验收以及官方 SDK stdio MCP 调用通过，覆盖并发幂等、退出码、UTF-8 日志、断线恢复、超时/取消、二进制文件往返、R ggplot2/qs 产物。独立 Release 另外验证无 Python / SSH PATH 下的 CLI、内置 SSH 和 MCP，以及真实服务器任务。
+27 项单元测试、14 项 Solvinglab 实际验收以及官方 SDK stdio MCP 调用通过，覆盖并发幂等、退出码、UTF-8 日志、断线恢复、超时/取消、二进制文件往返、R ggplot2/qs 产物。独立 Release 另外验证无 Python / SSH PATH 下的 CLI、内置 SSH 和 MCP，以及真实服务器任务。
+
+实际启动三个 Codex subagent 测试分析、多任务和交接，发现并修复了并发 MCP 下载读走后续工具请求的问题。详见 [Codex 工作流报告](docs/CODEX_WORKFLOWS.md)；并发 MCP 下载应使用 0.2.1 或更新版本。
 
 一次五次采样的持久短任务中位数为 0.359 秒，裸 SSH 冷连接 1.888 秒，裸 SSH 复用连接 0.465 秒。一次生成日志的三个观察返回值，o200k_base 估算由 3330 降至 593 token，减少 82.2%。这是特定返回内容的测量，不是完整会话开销或性能保证；MCP 封装和工具 schema 未计入。[测试报告](docs/TEST_REPORT.md) · [网络压力与性能报告](docs/PERFORMANCE.md)
 

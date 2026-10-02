@@ -66,6 +66,21 @@ def test_changed_payload_does_not_replace_existing_file(client,monkeypatch,tmp_p
     assert sorted(p.name for p in target.iterdir())==['a.txt']
 
 
+def test_download_does_not_inherit_mcp_request_stream(client,monkeypatch,tmp_path):
+    manifest={'task_id':'result','files':[]}
+    class Process:
+        returncode=0
+        stdout=io.BytesIO(wire([('manifest.json',json.dumps(manifest).encode())]))
+        def wait(self):return 0
+        def poll(self):return 0
+        def kill(self):pass
+    def launch(*args,**kwargs):
+        assert kwargs['stdin']==subprocess.DEVNULL
+        return Process()
+    monkeypatch.setattr(subprocess,'Popen',launch)
+    assert client.fetch('result',tmp_path/'downloads')['files']==[]
+
+
 def test_invalid_archive_names_are_not_extracted(client,monkeypatch,tmp_path):
     manifest={'task_id':'result','files':[{'path':'/remote/a.txt','size':3,'sha256':hashlib.sha256(b'abc').hexdigest()}]}
     fake_process(monkeypatch,wire([('manifest.json',json.dumps(manifest).encode()),('../escape',b'abc')]))

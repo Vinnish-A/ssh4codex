@@ -1,0 +1,249 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-02T06:34:59.757574+00:00",
+  "cli_version": "ssh4codex 0.2.0",
+  "server_alias": "solvinglab",
+  "session": "data",
+  "run_id": "a83a15063bbf",
+  "all_passed": true,
+  "independent_local_state_directories": 6,
+  "shared_server_configuration": true,
+  "primary_task_ids": [
+    "handoff-a83a15063bbf-producer",
+    "handoff-a83a15063bbf-aggregate",
+    "handoff-a83a15063bbf-durable"
+  ],
+  "remote_work_directory": "/tmp/ssh4codex-codex-b7ffc0b0cfe1/handoff/a83a15063bbf",
+  "remote_artifact_paths": [
+    "/tmp/ssh4codex-codex-b7ffc0b0cfe1/handoff/a83a15063bbf/numbers.json",
+    "/tmp/ssh4codex-codex-b7ffc0b0cfe1/handoff/a83a15063bbf/aggregate.json",
+    "/tmp/ssh4codex-codex-b7ffc0b0cfe1/handoff/a83a15063bbf/counter.json"
+  ],
+  "elapsed_seconds": 15.387,
+  "checks": [
+    "producer_exits_with_active_remote_task",
+    "fresh_process_discovers_remote_task_without_local_ledger",
+    "fresh_process_waits_and_verifies_source_artifact",
+    "dependent_aggregation_verifies_output",
+    "three_process_same_request_exactly_one_original",
+    "append_only_side_effect_count_one",
+    "different_request_same_id_rejected"
+  ],
+  "handoff": {
+    "producer": {
+      "task_id": "handoff-a83a15063bbf-producer",
+      "initial_state": "queued",
+      "session": "data",
+      "exits_while_remote_active": true,
+      "process_id": 36880,
+      "telemetry": {
+        "role": "producer",
+        "request_count": 1,
+        "output_bytes": 124,
+        "requests": [
+          {
+            "operation": "run",
+            "seconds": 0.597,
+            "returncode": 0,
+            "stdout_bytes": 124,
+            "stderr_bytes": 0
+          }
+        ]
+      },
+      "state_after_process_exit": "running"
+    },
+    "consumer": {
+      "discovered_task_id": "handoff-a83a15063bbf-producer",
+      "independent_empty_state": true,
+      "aggregate_task_id": "handoff-a83a15063bbf-aggregate",
+      "session": "data",
+      "source_artifact": {
+        "bytes": 24,
+        "sha256": "fa69f24a73e69921320ec211e14536bd9ef89bc1ec26945d17478332ce6782d9"
+      },
+      "aggregate_artifact": {
+        "bytes": 23,
+        "sha256": "ffcd59f57357b8bf58f4a7db23238c95ad56247df187f2f0562f69f798c63dc7"
+      },
+      "process_id": 36891,
+      "telemetry": {
+        "role": "consumer",
+        "request_count": 6,
+        "output_bytes": 4250,
+        "requests": [
+          {
+            "operation": "list",
+            "seconds": 1.931,
+            "returncode": 0,
+            "stdout_bytes": 2648,
+            "stderr_bytes": 0
+          },
+          {
+            "operation": "status",
+            "seconds": 0.808,
+            "returncode": 0,
+            "stdout_bytes": 226,
+            "stderr_bytes": 0
+          },
+          {
+            "operation": "wait",
+            "seconds": 3.155,
+            "returncode": 0,
+            "stdout_bytes": 438,
+            "stderr_bytes": 0
+          },
+          {
+            "operation": "fetch",
+            "seconds": 0.368,
+            "returncode": 0,
+            "stdout_bytes": 238,
+            "stderr_bytes": 0
+          },
+          {
+            "operation": "run",
+            "seconds": 0.491,
+            "returncode": 0,
+            "stdout_bytes": 459,
+            "stderr_bytes": 0
+          },
+          {
+            "operation": "fetch",
+            "seconds": 0.333,
+            "returncode": 0,
+            "stdout_bytes": 241,
+            "stderr_bytes": 0
+          }
+        ]
+      }
+    }
+  },
+  "concurrent_submission": {
+    "workers": [
+      {
+        "task_id": "handoff-a83a15063bbf-durable",
+        "reused": true,
+        "session": "data",
+        "process_id": 36923,
+        "telemetry": {
+          "role": "race-1",
+          "request_count": 1,
+          "output_bytes": 122,
+          "requests": [
+            {
+              "operation": "run",
+              "seconds": 1.525,
+              "returncode": 0,
+              "stdout_bytes": 122,
+              "stderr_bytes": 0
+            }
+          ]
+        }
+      },
+      {
+        "task_id": "handoff-a83a15063bbf-durable",
+        "reused": true,
+        "session": "data",
+        "process_id": 36924,
+        "telemetry": {
+          "role": "race-2",
+          "request_count": 1,
+          "output_bytes": 122,
+          "requests": [
+            {
+              "operation": "run",
+              "seconds": 1.523,
+              "returncode": 0,
+              "stdout_bytes": 122,
+              "stderr_bytes": 0
+            }
+          ]
+        }
+      },
+      {
+        "task_id": "handoff-a83a15063bbf-durable",
+        "reused": false,
+        "session": "data",
+        "process_id": 36925,
+        "telemetry": {
+          "role": "race-3",
+          "request_count": 1,
+          "output_bytes": 123,
+          "requests": [
+            {
+              "operation": "run",
+              "seconds": 1.519,
+              "returncode": 0,
+              "stdout_bytes": 123,
+              "stderr_bytes": 0
+            }
+          ]
+        }
+      }
+    ],
+    "task_id": "handoff-a83a15063bbf-durable",
+    "reused_flags": [
+      true,
+      true,
+      false
+    ],
+    "side_effect_count": 1,
+    "counter_artifact": {
+      "bytes": 17,
+      "sha256": "95b9c341cda16e855d8a770ac7e8f75095cd231b8ce54d5217ca4c121572277b"
+    },
+    "conflict_returncode": 2,
+    "conflict_error": "remote",
+    "seconds": 5.186
+  },
+  "coordinator": {
+    "role": "coordinator",
+    "request_count": 6,
+    "output_bytes": 1521,
+    "requests": [
+      {
+        "operation": "run",
+        "seconds": 1.616,
+        "returncode": 0,
+        "stdout_bytes": 254,
+        "stderr_bytes": 0
+      },
+      {
+        "operation": "status",
+        "seconds": 0.439,
+        "returncode": 0,
+        "stdout_bytes": 226,
+        "stderr_bytes": 0
+      },
+      {
+        "operation": "wait",
+        "seconds": 2.215,
+        "returncode": 0,
+        "stdout_bytes": 441,
+        "stderr_bytes": 0
+      },
+      {
+        "operation": "fetch",
+        "seconds": 0.581,
+        "returncode": 0,
+        "stdout_bytes": 226,
+        "stderr_bytes": 0
+      },
+      {
+        "operation": "run",
+        "seconds": 0.569,
+        "returncode": 0,
+        "stdout_bytes": 255,
+        "stderr_bytes": 0
+      },
+      {
+        "operation": "run",
+        "seconds": 0.266,
+        "returncode": 2,
+        "stdout_bytes": 119,
+        "stderr_bytes": 0
+      }
+    ]
+  },
+  "cli_request_count": 16,
+  "cli_output_bytes": 6262
+}

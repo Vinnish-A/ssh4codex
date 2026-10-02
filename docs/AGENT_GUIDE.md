@@ -32,6 +32,19 @@ ssh4codex add lab --target user@host --port 2220 --session data \
 
 配置在 `~/.config/ssh4codex/config.json`，权限 600；其中只保存地址、路径和参数，不保存密钥内容/密码。SSH4CODEX_CONFIG 可选择另一个配置文件；SSH4CODEX_STATE 可选择本地任务登记目录。显式 SSH4CODEX_SSH 可切换 SSH 程序。
 
+### 人工终端直接进入 tmux
+
+```bash
+ssh4codex connect solvinglab
+ssh4codex connect solvinglab --session analysis
+```
+
+0.3.0 起可在自己的交互终端一步完成 SSH / tmux 接入。首次使用配置里的 session（Solvinglab 为 data），之后使用最近通过 connect 选择的目标；显式 `--session` 覆盖并保存选择。目标在 SSH 建连前保存，断线后可以用同一命令回去。记录按服务器配置隔离，存于本地 `SSH4CODEX_STATE` 下的 `<配置哈希>.tmux`，权限 600、原子替换，不上传。
+
+采用 SSH PTY 和 `tmux new-session -A -s NAME`：已有会话接入，不存在则创建，不 detach 其它客户端。服务端保留该会话当前活动窗口 / pane 和 shell 状态；tmux 内手工换会话不更新本连接器的记录。默认 `Ctrl-b`、`d` 分离终端；不要用 exit 代替 detach 来保留 shell。
+
+这项功能供人工接管使用，connect 继承终端输入输出并返回 SSH 的退出码，不返回 JSON，也不注册成 MCP 工具。自动任务继续按配置的 session 执行，不读取人工会话选择；无需 attach，也不向已有 Codex pane 注入输入。实现依据：[tmux 官方手册](https://man.openbsd.org/tmux#new-session)、[SSH PTY 手册](https://man.openbsd.org/ssh#t)。
+
 ## 二、执行：使用任务，不猜终端提示符
 
 ```bash

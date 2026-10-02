@@ -29,6 +29,20 @@ ssh4codex run solvinglab --command 'printf "hello\n"' --wait 2
 
 如果 `~/.local/bin` 不在 PATH 中，使用上面的完整路径。首次连接使用正常 SSH 主机身份校验；不会关闭 host key 检查。
 
+## 一步接入 tmux
+
+在自己的终端运行（0.3.0 起）：
+
+```bash
+ssh4codex connect solvinglab
+ssh4codex connect solvinglab --session analysis
+ssh4codex connect solvinglab
+```
+
+第一次直接进入配置的 `data`；选择 `analysis` 后，下次直接回到 `analysis`，无需先 SSH 登录再输入 attach。会话不存在时创建，已有会话直接接入，不踢掉其它客户端。使用 tmux 默认快捷键 `Ctrl-b`、`d` 可以退出连接并保留会话；再次连接回到服务端当前活动窗口和 pane，保留正在运行的 shell / 程序。
+
+记录的是本连接器最近选择的会话目标，即使连接失败或中途断开也保留；不追踪在 tmux 内部手工切换的其它会话。自动 `run` / MCP 仍使用服务器配置里的会话，默认 `data`，不随人工选择改变。`connect` 需要交互终端，不返回 JSON，也不用于 agent 的自动脚本执行。
+
 ## 自己的服务器与任务
 
 ```bash
@@ -68,13 +82,13 @@ command = "/home/YOUR_USER/.local/bin/ssh4codex-mcp"
 
 ## 实测与开发
 
-27 项单元测试、14 项 Solvinglab 实际验收以及官方 SDK stdio MCP 调用通过，覆盖并发幂等、退出码、UTF-8 日志、断线恢复、超时/取消、二进制文件往返、R ggplot2/qs 产物。独立 Release 另外验证无 Python / SSH PATH 下的 CLI、内置 SSH 和 MCP，以及真实服务器任务。
+31 项单元测试、14 项 Solvinglab 实际验收以及官方 SDK stdio MCP 调用通过，覆盖并发幂等、退出码、UTF-8 日志、断线恢复、超时/取消、二进制文件往返、R ggplot2/qs 产物。独立 Release 另外验证无 Python / SSH PATH 下的 CLI、内置 SSH 和 MCP，以及真实服务器任务。直接 tmux 接入另有 5 次真实 PTY 连接验收，覆盖重新接入、保留 shell 环境和不踢掉其它客户端。
 
 实际启动三个 Codex subagent 测试分析、多任务和交接，发现并修复了并发 MCP 下载读走后续工具请求的问题。详见 [Codex 工作流报告](docs/CODEX_WORKFLOWS.md)；并发 MCP 下载应使用 0.2.1 或更新版本。
 
 一次五次采样的持久短任务中位数为 0.359 秒，裸 SSH 冷连接 1.888 秒，裸 SSH 复用连接 0.465 秒。一次生成日志的三个观察返回值，o200k_base 估算由 3330 降至 593 token，减少 82.2%。这是特定返回内容的测量，不是完整会话开销或性能保证；MCP 封装和工具 schema 未计入。[测试报告](docs/TEST_REPORT.md) · [网络压力与性能报告](docs/PERFORMANCE.md)
 
-本版支持非交互任务，没有自动控制远端 Codex/REPL、管理员 sudo、断点续传或服务器重启后自动重跑。远端 tmux 被结束时报告 interrupted，不自动重放任务。
+本版支持自动脚本任务与人工终端接入，没有自动控制远端 Codex/REPL、管理员 sudo、断点续传或服务器重启后自动重跑。远端 tmux 被结束时，原任务报告 interrupted，不自动重放；`connect` 创建的新会话也不会恢复已结束的原进程。
 
 从源码开发：
 

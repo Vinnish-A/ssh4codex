@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import sys
@@ -96,6 +97,7 @@ class Client:
         root.chmod(0o700)
         self.local = root
         transport_hash = hashlib.sha256(json.dumps(self.server, sort_keys=True).encode()).hexdigest()[:16]
+        self.tmux_target = root / (transport_hash + '.tmux')
         # Short, private socket directory avoids Unix socket path-length failures.
         sockets = Path.home() / '.ssh/ssh4codex'
         sockets.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -121,6 +123,30 @@ class Client:
     def ssh_argv(self, command, fresh=False):
         bypass = ['-o', 'ControlPath=none', '-o', 'ControlMaster=no'] if fresh else []
         return [ssh_program(), *bypass, *self.options, self.server['target'], command]
+
+    def connect(self, session=None):
+        """Interactive SSH + tmux; remember the last selected target before I/O."""
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            raise SSHError('configuration', 'connect requires an interactive terminal; use run/status for agent tasks')
+        if session is None:
+            session = self.tmux_target.read_text().strip() if self.tmux_target.exists() else self.server.get('session', 'ssh4codex')
+        if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', session):
+            raise ValueError('Invalid tmux session name')
+        # Keep the selected target even if the SSH connection later drops.
+        fd, temporary = tempfile.mkstemp(dir=self.local)
+        try:
+            with os.fdopen(fd, 'w') as handle:
+                handle.write(session)
+            os.replace(temporary, self.tmux_target)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
+        command = 'exec ' + shlex.join(['tmux', 'new-session', '-A', '-s', session,
+                                      '-c', self.server.get('cwd', '.')])
+        argv = self.ssh_argv(command)
+        argv.insert(1, '-tt')
+        print(f'Connecting to {self.name} / tmux {session}', file=sys.stderr, flush=True)
+        # Here stdin deliberately carries terminal input, unlike MCP downloads.
+        return subprocess.run(argv, env=transport_env()).returncode
 
     def call_ssh(self, command, payload=None, timeout=20, uncertain_task=None, fresh=False):
         try:

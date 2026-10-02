@@ -1,0 +1,14 @@
+{
+  "runtime": "ssh4codex 0.3.0",
+  "passed": true,
+  "run_id": "d80453a783",
+  "elapsed_seconds": 14.026,
+  "interactive_connections": 5,
+  "checks": {
+    "configured_default_created_and_attached": true,
+    "existing_client_not_detached": true,
+    "detach_preserves_shell_environment": true,
+    "explicit_session_remembered_by_new_process": true
+  },
+  "synthetic_sessions_only": true
+}

@@ -105,3 +105,46 @@ def test_task_registered_before_transport_failure(client, monkeypatch):
     monkeypatch.setattr(client, 'rpc', fail)
     with pytest.raises(SSHError): client.submit('echo test', task_id='stable-id')
     assert json.loads((client.local / 'task-stable-id.json').read_text())['task_id'] == 'stable-id'
+
+
+def test_interactive_connect_remembers_target_after_disconnect(client, monkeypatch):
+    from ssh4codex import client as module
+    monkeypatch.setattr(module.sys.stdin, 'isatty', lambda: True)
+    monkeypatch.setattr(module.sys.stdout, 'isatty', lambda: True)
+    calls = []
+    def launch(argv, **kwargs):
+        calls.append(argv)
+        assert 'stdin' not in kwargs and 'capture_output' not in kwargs
+        return subprocess.CompletedProcess(argv, 255)
+    monkeypatch.setattr(subprocess, 'run', launch)
+    assert client.connect() == 255
+    assert calls[-1][1] == '-tt' and calls[-1][-1] == 'exec tmux new-session -A -s data -c .'
+    assert client.connect('analysis') == 255
+    assert Client('example').connect() == 255
+    assert calls[-1][-1] == 'exec tmux new-session -A -s analysis -c .'
+    assert client.tmux_target.stat().st_mode & 0o777 == 0o600
+
+
+def test_connect_invalid_target_does_not_overwrite_selection(client, monkeypatch):
+    from ssh4codex import client as module
+    monkeypatch.setattr(module.sys.stdin, 'isatty', lambda: True)
+    monkeypatch.setattr(module.sys.stdout, 'isatty', lambda: True)
+    client.tmux_target.write_text('data')
+    with pytest.raises(ValueError):
+        client.connect('data; touch /tmp/injected')
+    assert client.tmux_target.read_text() == 'data'
+
+
+def test_connect_requires_terminal_before_persisting_target(client, monkeypatch):
+    from ssh4codex import client as module
+    monkeypatch.setattr(module.sys.stdin, 'isatty', lambda: False)
+    with pytest.raises(SSHError) as error:
+        client.connect('data')
+    assert error.value.kind == 'configuration'
+    assert not client.tmux_target.exists()
+
+
+def test_manual_session_selection_does_not_redirect_automated_tasks(client, monkeypatch):
+    client.tmux_target.write_text('analysis')
+    monkeypatch.setattr(client, 'rpc', lambda action, **spec: spec)
+    assert client.submit('printf test', task_id='configured-session')['session'] == 'data'

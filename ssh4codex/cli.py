@@ -22,6 +22,9 @@ def parser():
     add.add_argument('--compression', action=argparse.BooleanOptionalAction, default=None)
     for action in ['doctor', 'list', 'disconnect']:
         a = sub.add_parser(action); a.add_argument('server')
+    connect = sub.add_parser('connect', help='Connect directly to the last selected tmux session (interactive terminal)')
+    connect.add_argument('server')
+    connect.add_argument('--session', help='Select and remember a tmux session; first use defaults to server configuration')
     batch = sub.add_parser('status-many', help='Read 1..64 tasks in one SSH request; omit logs by default')
     batch.add_argument('server'); batch.add_argument('task_ids', nargs='+')
     batch.add_argument('--logs', action='store_true'); batch.add_argument('--limit', type=int, default=2048)
@@ -68,6 +71,8 @@ def main(argv=None):
             value = {'server': args.server, 'config': str(path)}
         else:
             c = Client(args.server)
+            if args.action == 'connect':
+                sys.exit(c.connect(args.session))
             if args.action == 'run':
                 if not 0 <= args.wait <= 60: raise ValueError('wait must be between 0 and 60 seconds')
                 env = dict(item.split('=', 1) for item in args.env)

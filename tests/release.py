@@ -23,6 +23,7 @@ async def check(package):
         assert run('--version').strip().endswith((package / 'VERSION').read_text().strip())
         assert 'solvinglab' in json.loads(run('catalog'))['servers']
         assert 'run' in run('--help')
+        assert '--session' in run('connect', '--help')
         ssh = subprocess.run([str(package / 'tools/ssh'), '-V'], env=env,
                              capture_output=True, text=True, check=True, timeout=10)
         assert 'OpenSSH' in ssh.stderr

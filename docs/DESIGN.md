@@ -2,6 +2,8 @@
 
 本地 CLI/MCP → 复用 OpenSSH → 远端 Python helper → tmux 独立窗口 → 程序及日志/产物。
 
+CLI `connect` 是独立的人工终端入口：复用相同 SSH 配置 / master，以 PTY 直接执行 `tmux new-session -A`。最近选择的会话目标按服务器配置哈希保存在本地私有状态目录，SSH 建连前原子保存以保留断线后的目标。自动任务仍只读取服务器配置 session，不受人工 connect 的选择影响；MCP 不暴露交互终端工具。connect 返回 SSH 退出码和原始终端输出，不遵循任务命令的 JSON 返回格式。
+
 远端 helper 按源代码 SHA256 安装到 `~/.local/share/ssh4codex/runtime/<hash>/remote.py`。通过 SSH stdin 传 JSON，脚本按原文存储；上传安装为原子替换。运行中任务继续使用其不可变版本，不受软件升级影响。没有远端常驻 daemon 或新增网络监听端口。
 
 每个任务目录包含 request.json、script、state.json、lock、stdout.log、stderr.log。取消使用 cancel 文件。提交使用文件锁和请求指纹：先发布 queued，再创建 tmux 窗口；worker 获得锁后发布 running。相同 ID/请求读取状态，不再执行。窗口创建失败记录 failed；窗口丢失且没有终态记录则 status 发布 interrupted。已经中断的任务不会自动重新启动。

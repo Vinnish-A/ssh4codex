@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.3.0 — 2026-10-02
+
+- Added interactive `connect SERVER [--session NAME]` to open SSH directly into tmux, remembering the most recently selected target across client restarts and connection loss. First use defaults to the configured session; missing sessions are created without detaching existing clients.
+- Kept interactive session selection separate from automated CLI/MCP task execution, with real PTY checks for session resumption, retained shell state and simultaneous clients.
+
 ## 0.2.1 — 2026-10-02
 
 - Isolated download subprocess stdin from the MCP JSON-RPC stream. Concurrent downloads could otherwise consume subsequent tool requests, leaving fetched files on disk but closing or stalling the MCP session.
